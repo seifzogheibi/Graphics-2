@@ -1,0 +1,13 @@
+_build_/
+bin/
+lib/
+
+Makefile
+**/Makefiles
+
+*.o
+*.obj
+*.a
+*.so
+*.exe
+*.log

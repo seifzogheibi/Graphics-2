@@ -1,0 +1,24 @@
+Parlahti model (langerso.{obj,mtl}; L3221E-4k.jpeg)
+
+See coursework brief for details. Elevation data and the orthophoto texture
+was obtained from Maanmittauslaitos, the national land survey of Finalnd. 
+The datasets are subject to CC-BY 4.0.
+
+
+Landingpad (landingpad.{obj,mtl})
+
+Landingpad model by the Chalmers Computer Graphics Research Group
+http://www.cse.chalmers.se/~uffe/ComputerGraphicsGroup.htm
+
+This model is licensed under the CC0 Creative Commons Public Domain
+https://creativecommons.org/share-your-work/public-domain/cc0/
+
+The model is modified: it is rescaled by 0.01, removes the "tvCard" texture
+and sets the ambient color to the diffuse one.
+
+
+Droid Sans Mono Dotted font (DroidSansMonoDotted.ttf)
+
+Licensed under the Apache v 2.0
+Source http://www.cosmix.org/software/
+
