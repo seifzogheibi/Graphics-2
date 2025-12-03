@@ -21,6 +21,95 @@
 // Note: as before, these checks are not exhaustive. They're meant as examples
 // to get you started.
 
+// Basel did X and Y
+
+TEST_CASE("4x4 rotation around X axis", "[rotation][mat44]")
+{
+    static constexpr float kEps_ = 1e-6f;
+    using namespace Catch::Matchers;
+
+    SECTION("Identity at 0 degrees")
+    {
+        auto const m = make_rotation_x(0.f);
+
+        // Should be identity
+        REQUIRE_THAT((m[0,0]), WithinAbs(1.f, kEps_));
+        REQUIRE_THAT((m[1,1]), WithinAbs(1.f, kEps_));
+        REQUIRE_THAT((m[2,2]), WithinAbs(1.f, kEps_));
+        REQUIRE_THAT((m[3,3]), WithinAbs(1.f, kEps_));
+    }
+
+    SECTION("90 degrees")
+    {
+        auto const m = make_rotation_x(std::numbers::pi_v<float> / 2.f);
+
+        REQUIRE_THAT((m[0,0]), WithinAbs(1.f, kEps_));
+        REQUIRE_THAT((m[1,1]), WithinAbs(0.f, kEps_));
+        REQUIRE_THAT((m[1,2]), WithinAbs(-1.f, kEps_));
+        REQUIRE_THAT((m[2,1]), WithinAbs(1.f, kEps_));
+        REQUIRE_THAT((m[2,2]), WithinAbs(0.f, kEps_));
+        REQUIRE_THAT((m[3,3]), WithinAbs(1.f, kEps_));
+    }
+
+    SECTION("Arbitrary angle 30 degrees")
+    {
+        float const angle = 30.f * std::numbers::pi_v<float> / 180.f;
+        auto const m = make_rotation_x(angle);
+
+        float const c = std::cos(angle);
+        float const s = std::sin(angle);
+
+        REQUIRE_THAT((m[1,1]), WithinAbs(c, kEps_));
+        REQUIRE_THAT((m[1,2]), WithinAbs(-s, kEps_));
+        REQUIRE_THAT((m[2,1]), WithinAbs(s, kEps_));
+        REQUIRE_THAT((m[2,2]), WithinAbs(c, kEps_));
+    }
+}
+
+// Y axis
+TEST_CASE("4x4 rotation around Y axis", "[rotation][mat44]")
+{
+    static constexpr float kEps_ = 1e-6f;
+    using namespace Catch::Matchers;
+
+    SECTION("Identity at 0 degrees")
+    {
+        auto const m = make_rotation_y(0.f);
+
+        REQUIRE_THAT((m[0,0]), WithinAbs(1.f, kEps_));
+        REQUIRE_THAT((m[1,1]), WithinAbs(1.f, kEps_));
+        REQUIRE_THAT((m[2,2]), WithinAbs(1.f, kEps_));
+        REQUIRE_THAT((m[3,3]), WithinAbs(1.f, kEps_));
+    }
+
+    SECTION("90 degrees")
+    {
+        auto const m = make_rotation_y(std::numbers::pi_v<float> / 2.f);
+
+        REQUIRE_THAT((m[0,0]), WithinAbs(0.f, kEps_));
+        REQUIRE_THAT((m[0,2]), WithinAbs(1.f, kEps_));
+        REQUIRE_THAT((m[2,0]), WithinAbs(-1.f, kEps_));
+        REQUIRE_THAT((m[2,2]), WithinAbs(0.f, kEps_));
+        REQUIRE_THAT((m[1,1]), WithinAbs(1.f, kEps_));
+        REQUIRE_THAT((m[3,3]), WithinAbs(1.f, kEps_));
+    }
+
+    SECTION("Arbitrary angle 17 degrees")
+    {
+        float const angle = 17.f * std::numbers::pi_v<float> / 180.f;
+        auto const m = make_rotation_y(angle);
+
+        float const c = std::cos(angle);
+        float const s = std::sin(angle);
+
+        REQUIRE_THAT((m[0,0]), WithinAbs(c, kEps_));
+        REQUIRE_THAT((m[0,2]), WithinAbs(s, kEps_));
+        REQUIRE_THAT((m[2,0]), WithinAbs(-s, kEps_));
+        REQUIRE_THAT((m[2,2]), WithinAbs(c, kEps_));
+    }
+}
+
+// seif added Z
 TEST_CASE( "4x4 rotation around Z axis", "[rotation][mat44]" )
 {
 	static constexpr float kEps_ = 1e-6f;
