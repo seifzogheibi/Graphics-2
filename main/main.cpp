@@ -23,6 +23,7 @@
 #include <rapidobj/rapidobj.hpp>
 #include "../vmlib/vec2.hpp"
 #include "../vmlib/vec3.hpp"
+#include <vector>
 
 
 
@@ -66,21 +67,21 @@ namespace
 		double lastMouseY = 0.0;
 	};
 
-	Camera gCamera;
+	Camera gCamera;// 1.5?
+	struct MeshGL
+	    {
+        GLuint vao = 0;
+        GLuint vboPositions = 0;
+        GLuint vboNormals   = 0;
+        GLsizei vertexCount = 0;
+    };// ends
 
 	// Forward declarations for extra callbacks
 	void glfw_callback_mouse_button_( GLFWwindow* window, int button, int action, int mods );
 	void glfw_callback_cursor_pos_( GLFWwindow* window, double xpos, double ypos );
 
 }
-// basel added code
-std::vector<Vertex> gUfoVertices;
-std::vector<Index>  gUfoIndices;
 
-GLuint gUfoVao = 0;
-GLuint gUfoVbo = 0;
-GLuint gUfoIbo = 0;
-// end of code edit
 int main() try
 {
 	// Initialize GLFW
@@ -320,10 +321,21 @@ int main() try
     // === UFO CPU build (from your Task1.5) – we’ll flesh this out next ===
 	MeshGL ufoMesh;
 
-    // Build UFO geometry on CPU
-    std::vector<Vec3f> ufoPositions;
-    std::vector<Vec3f> ufoNormals;
-    buildUfoFlatArrays(ufoPositions, ufoNormals);
+	// Build UFO geometry on CPU
+	std::vector<Vec3f> ufoPositions;
+	std::vector<Vec3f> ufoNormals;
+
+	// counts for base (grey) and top+antenna (blue)
+	int ufoBaseVertexCount = 0;
+	int ufoTopVertexCount  = 0;
+
+	buildUfoFlatArrays(
+		ufoPositions,
+		ufoNormals,
+		ufoBaseVertexCount,
+		ufoTopVertexCount
+	);
+
 
     // Create VAO/VBO for UFO (same pattern as terrain)
     glGenVertexArrays(1, &ufoMesh.vao);
@@ -410,13 +422,32 @@ float dt = static_cast<float>(currentTime - lastTime);
 lastTime = currentTime;
 
 // 1) Aspect ratio and projection matrix (depends on framebuffer size)
-float aspect = fbwidth / fbheight;
+float aspect     = fbwidth / fbheight;
 float fovRadians = 60.0f * std::numbers::pi_v<float> / 180.0f;
-float zNear = 0.1f;
-float zFar  = 250.0f;
+float zNear      = 0.1f;
+float zFar       = 250.0f;
 
-Mat44f proj = make_perspective_projection(fovRadians, aspect, zNear, zFar) * make_rotation_x(-gCamera.pitch) * make_rotation_y(gCamera.yaw) * make_translation(-gCamera.position);
+Mat44f proj =
+    make_perspective_projection(fovRadians, aspect, zNear, zFar) *
+    make_rotation_x(-gCamera.pitch) *
+    make_rotation_y(gCamera.yaw) *
+    make_translation(-gCamera.position);
 
+// Treat proj as viewProj = P * V
+Mat44f viewProj = proj;
+
+// Terrain model is identity, so MVP_terrain = viewProj * model
+Mat44f terrainMvp = viewProj * model;
+
+// UFO model: lifted above ground and squashed into a saucer
+Mat44f ufoModel =
+    make_translation(Vec3f{ 0.f, 3.f, 0.f }) *
+    make_scaling(0.5f, 0.5f, 0.5f);
+
+// UFO MVP
+Mat44f ufoMvp = viewProj * ufoModel;
+
+//Task1.5 end
 
 // Base speed and modifiers
 float baseSpeed = 5.0f;  // tweak this to taste (units per second)
@@ -471,33 +502,66 @@ Mat33f normalMatrix = mat44_to_mat33( transpose(invert(model)) );
 // 1) Clear framebuffer
 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-// 2) Use terrain shader program) 
+// 2) Use shader program
 GLuint progId = terrainProgram.programId();
 glUseProgram(progId);
 
-GLint locProj  = glGetUniformLocation(progId, "uProj");
-
-glUniformMatrix4fv(locProj,  1, GL_TRUE, proj.v);
-glUniformMatrix3fv(
-	2, // make sure this matches the location = N in the vertex shader!
-	1, GL_TRUE, normalMatrix.v
-);
-
+// Look up uniforms once per frame
+GLint locProj         = glGetUniformLocation(progId, "uProj");
 GLint locLightDir     = glGetUniformLocation(progId, "uLightDir");
 GLint locBaseColor    = glGetUniformLocation(progId, "uBaseColor");
 GLint locAmbientColor = glGetUniformLocation(progId, "uAmbientColor");
 
+// Lighting uniforms (same for both objects)
 glUniform3fv(locLightDir,     1, &lightDir[0]);
-glUniform3fv(locBaseColor,    1, &baseColor[0]);
 glUniform3fv(locAmbientColor, 1, &ambientColor[0]);
 
-//TASK1.5
-// Draw terrain
+// Normal matrix (still fine for both; only uniform scaling)
+glUniformMatrix3fv(
+    2, // matches layout(location = 2) uniform mat3 uNormalMatrix;
+    1, GL_TRUE, normalMatrix.v
+);
+
+// ====================
+// Draw TERRAIN
+// ====================
+glUniformMatrix4fv(locProj, 1, GL_TRUE, terrainMvp.v);
+
+// Terrain colour from your 1.3 work
+glUniform3fv(locBaseColor, 1, &baseColor[0]);
+
 glBindVertexArray(terrainMesh.vao);
 glDrawArrays(GL_TRIANGLES, 0, terrainMesh.vertexCount);
-glBindVertexArray(0); //These 3 lines were also task1.2
+glBindVertexArray(0);
 
-// Draw UFO (same shader, uniforms already set)
+// ====================
+// Draw UFO
+// ====================
+
+// Colours
+Vec3f saucerColor{ 0.35f, 0.35f, 0.38f };  // dark-ish grey base
+Vec3f domeColor  { 0.3f,  0.55f, 0.95f };  // light blue dome+antenna
+
+glBindVertexArray(ufoMesh.vao);
+
+// 1) Base saucer (grey) : vertices [0, ufoBaseVertexCount)
+glUniform3fv(locBaseColor, 1, &saucerColor[0]);
+glUniformMatrix4fv(locProj, 1, GL_TRUE, ufoMvp.v);
+glDrawArrays(GL_TRIANGLES, 0, ufoBaseVertexCount);
+
+// 2) Top dome + antenna (light blue) : vertices [ufoBaseVertexCount, ufoBaseVertexCount + ufoTopVertexCount)
+glUniform3fv(locBaseColor, 1, &domeColor[0]);
+glDrawArrays(GL_TRIANGLES, ufoBaseVertexCount, ufoTopVertexCount);
+
+glBindVertexArray(0);
+
+
+
+
+// --- Draw UFO ---
+glUniformMatrix4fv(locProj, 1, GL_TRUE, ufoMvp.v);
+// normalMatrix can stay the same for now (only uniform scaling + translation)
+
 glBindVertexArray(ufoMesh.vao);
 glDrawArrays(GL_TRIANGLES, 0, ufoMesh.vertexCount);
 glBindVertexArray(0);
