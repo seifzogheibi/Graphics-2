@@ -17,6 +17,7 @@
 #include "../vmlib/mat44.hpp"
 
 #include "defaults.hpp"
+#include "ufo.hpp" // added this basel
 
 
 namespace
@@ -38,7 +39,14 @@ namespace
 	};
 
 }
+// basel added code
+std::vector<Vertex> gUfoVertices;
+std::vector<Index>  gUfoIndices;
 
+GLuint gUfoVao = 0;
+GLuint gUfoVbo = 0;
+GLuint gUfoIbo = 0;
+// end of code edit
 int main() try
 {
 	// Initialize GLFW
@@ -135,7 +143,17 @@ int main() try
 	OGL_CHECKPOINT_ALWAYS();
 	
 	// TODO: global GL setup goes here
+	// Basel code edit
+	// Other initialization & loading
+	OGL_CHECKPOINT_ALWAYS();
 
+	// Build UFO geometry on CPU
+	buildUfo(gUfoVertices, gUfoIndices);
+
+	// TODO: create VAO/VBO/IBO for the UFO and upload data (later)
+
+	OGL_CHECKPOINT_ALWAYS();
+	// end of code edit
 	OGL_CHECKPOINT_ALWAYS();
 
 	// Main loop
