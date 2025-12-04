@@ -128,6 +128,16 @@ float dot( Vec3f aLeft, Vec3f aRight ) noexcept
 	;
 }
 
+constexpr
+Vec3f cross (Vec3f const& a, Vec3f const& b) noexcept{
+     
+	return Vec3f{
+        a.y * b.z - a.z * b.y,
+        a.z * b.x - a.x * b.z,
+        a.x * b.y - a.y * b.x
+    };
+}
+
 inline
 float length( Vec3f aVec ) noexcept
 {
