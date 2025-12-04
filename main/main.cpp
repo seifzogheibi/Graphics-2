@@ -16,6 +16,7 @@
 #include "../vmlib/vec4.hpp"
 #include "../vmlib/mat33.hpp"
 #include "../vmlib/mat44.hpp"
+#include "texture.hpp"
 
 #include "defaults.hpp"
 
@@ -162,13 +163,12 @@ int main() try
 
 	// Enable back-face culling (triangles facing away from camera are discarded)
 	glEnable(GL_CULL_FACE);
-	//glDisable(GL_CULL_FACE);
 
 	// Enable sRGB-correct framebuffer if you have sRGB textures / gamma-correct lighting
 	glEnable(GL_FRAMEBUFFER_SRGB);
 
 	// Set a reasonable clear color (background)
-	glClearColor(0.8f, 0.8f, 0.8f, 1.f);
+	glClearColor(0.2f, 0.2f, 0.2f, 1.f);
 	
 	// END
 
@@ -196,6 +196,7 @@ int main() try
     GLuint vboPositions = 0;
     GLuint vboNormals   = 0;
     GLsizei vertexCount = 0;
+	GLuint vboTexcoords = 0;
 };
 
 	// === Load Parlahti mesh with rapidobj ===
@@ -220,9 +221,8 @@ int main() try
 	// 2) Flatten mesh into per-vertex arrays (no indexing, simpler)
 	std::vector<Vec3f> positions;
 	std::vector<Vec3f> normals;
+	std::vector<Vec2f> texcoords;
 
-	//positions.reserve(100000);
-	//normals.reserve(100000);
 
 	// Iterate over all shapes and their indices
 	for (auto const& shape : shapes)
@@ -252,6 +252,20 @@ int main() try
 				nrm[2] = attrib.normals[ni + 2];
 			}
 			normals.push_back(nrm);
+
+			// Texcoord (UV)
+			Vec2f uv{0.f, 0.f};
+			if (idx.texcoord_index >= 0)
+			{
+				std::size_t ti = static_cast<std::size_t>(idx.texcoord_index) * 2;
+
+				// construct uv from the two floats – no operator[] needed
+				uv = Vec2f{
+					attrib.texcoords[ti + 0],
+					attrib.texcoords[ti + 1]
+				};
+			}
+			texcoords.push_back(uv);
 		}
 	}
 
@@ -304,6 +318,26 @@ int main() try
 		(void*)0
 	);
 
+	// --- Texcoords VBO (location = 3) ---
+	glGenBuffers(1, &terrainMesh.vboTexcoords);
+	glBindBuffer(GL_ARRAY_BUFFER, terrainMesh.vboTexcoords);
+	glBufferData(
+		GL_ARRAY_BUFFER,
+		texcoords.size() * sizeof(Vec2f),
+		texcoords.data(),
+		GL_STATIC_DRAW
+	);
+	glEnableVertexAttribArray(3);
+	glVertexAttribPointer(
+		3,                  // layout(location = 3)
+		2,                  // u, v
+		GL_FLOAT,
+		GL_FALSE,
+		sizeof(Vec2f),
+		(void*)0
+	);
+
+
 	// Unbind VAO & VBOs (good practice)
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 	glBindVertexArray(0);
@@ -312,6 +346,8 @@ ShaderProgram terrainProgram({
     { GL_VERTEX_SHADER,   "assets/cw2/default.vert" },
     { GL_FRAGMENT_SHADER, "assets/cw2/default.frag" }
 });
+
+GLuint terrainTexture = load_texture_2d("assets/cw2/L4343A-4k.jpeg");
 
 
 
@@ -452,6 +488,7 @@ glUniformMatrix3fv(
 	1, GL_TRUE, normalMatrix.v
 );
 
+// lighting
 GLint locLightDir     = glGetUniformLocation(progId, "uLightDir");
 GLint locBaseColor    = glGetUniformLocation(progId, "uBaseColor");
 GLint locAmbientColor = glGetUniformLocation(progId, "uAmbientColor");
@@ -460,7 +497,13 @@ glUniform3fv(locLightDir,     1, &lightDir[0]);
 glUniform3fv(locBaseColor,    1, &baseColor[0]);
 glUniform3fv(locAmbientColor, 1, &ambientColor[0]);
 
-// 4) Bind VAO and draw mesh
+// texture
+glActiveTexture(GL_TEXTURE0);
+glBindTexture(GL_TEXTURE_2D, terrainTexture);
+GLint locTexture = glGetUniformLocation(progId, "uTexture");
+glUniform1i(locTexture, 0);
+
+// draw terrain
 glBindVertexArray(terrainMesh.vao);
 glDrawArrays(GL_TRIANGLES, 0, terrainMesh.vertexCount);
 glBindVertexArray(0);
