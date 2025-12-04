@@ -198,13 +198,6 @@ int main() try
 	// TODO: global GL setup goes here
 	// Basel/Seif code edit
     // START
-    struct MeshGL
-    {
-        GLuint vao = 0;
-        GLuint vboPositions = 0;
-        GLuint vboNormals   = 0;
-        GLsizei vertexCount = 0;
-    };
 
     // === Load Parlahti mesh with rapidobj ===
     MeshGL terrainMesh;
@@ -325,15 +318,50 @@ int main() try
     Vec3f ambientColor = { 0.1f, 0.1f, 0.1f };
 
     // === UFO CPU build (from your Task1.5) – we’ll flesh this out next ===
-    // If you are still using the old gUfoVertices/gUfoIndices API:
-    // buildUfo(gUfoVertices, gUfoIndices);
-    //
-    // Or, if you switched to the flat arrays + MeshGL ufoMesh that we discussed:
-    //   MeshGL ufoMesh;
-    //   std::vector<Vec3f> ufoPositions;
-    //   std::vector<Vec3f> ufoNormals;
-    //   buildUfoFlatArrays(ufoPositions, ufoNormals);
-    //   ... create VAO/VBO like terrainMesh ...
+	MeshGL ufoMesh;
+
+    // Build UFO geometry on CPU
+    std::vector<Vec3f> ufoPositions;
+    std::vector<Vec3f> ufoNormals;
+    buildUfoFlatArrays(ufoPositions, ufoNormals);
+
+    // Create VAO/VBO for UFO (same pattern as terrain)
+    glGenVertexArrays(1, &ufoMesh.vao);
+    glBindVertexArray(ufoMesh.vao);
+
+    glGenBuffers(1, &ufoMesh.vboPositions);
+    glBindBuffer(GL_ARRAY_BUFFER, ufoMesh.vboPositions);
+    glBufferData(
+        GL_ARRAY_BUFFER,
+        ufoPositions.size() * sizeof(Vec3f),
+        ufoPositions.data(),
+        GL_STATIC_DRAW
+    );
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(
+        0, 3, GL_FLOAT, GL_FALSE,
+        sizeof(Vec3f), (void*)0
+    );
+
+    glGenBuffers(1, &ufoMesh.vboNormals);
+    glBindBuffer(GL_ARRAY_BUFFER, ufoMesh.vboNormals);
+    glBufferData(
+        GL_ARRAY_BUFFER,
+        ufoNormals.size() * sizeof(Vec3f),
+        ufoNormals.data(),
+        GL_STATIC_DRAW
+    );
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(
+        1, 3, GL_FLOAT, GL_FALSE,
+        sizeof(Vec3f), (void*)0
+    );
+
+    // store count
+    ufoMesh.vertexCount = static_cast<GLsizei>(ufoPositions.size());
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
 
 	// END
     OGL_CHECKPOINT_ALWAYS();
@@ -463,11 +491,17 @@ glUniform3fv(locLightDir,     1, &lightDir[0]);
 glUniform3fv(locBaseColor,    1, &baseColor[0]);
 glUniform3fv(locAmbientColor, 1, &ambientColor[0]);
 
-// 4) Bind VAO and draw mesh
+//TASK1.5
+// Draw terrain
 glBindVertexArray(terrainMesh.vao);
 glDrawArrays(GL_TRIANGLES, 0, terrainMesh.vertexCount);
-glBindVertexArray(0);
+glBindVertexArray(0); //These 3 lines were also task1.2
 
+// Draw UFO (same shader, uniforms already set)
+glBindVertexArray(ufoMesh.vao);
+glDrawArrays(GL_TRIANGLES, 0, ufoMesh.vertexCount);
+glBindVertexArray(0);
+// Task1.5 end
 
 		OGL_CHECKPOINT_DEBUG();
 
