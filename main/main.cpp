@@ -16,6 +16,7 @@
 #include "../vmlib/vec4.hpp"
 #include "../vmlib/mat33.hpp"
 #include "../vmlib/mat44.hpp"
+#include "texture.hpp"
 
 #include "defaults.hpp"
 #include "ufo.hpp" // added this basel
@@ -68,13 +69,6 @@ namespace
 	};
 
 	Camera gCamera;// 1.5?
-	struct MeshGL
-	    {
-        GLuint vao = 0;
-        GLuint vboPositions = 0;
-        GLuint vboNormals   = 0;
-        GLsizei vertexCount = 0;
-    };// ends
 
 	// Forward declarations for extra callbacks
 	void glfw_callback_mouse_button_( GLFWwindow* window, int button, int action, int mods );
@@ -171,13 +165,12 @@ int main() try
 
 	// Enable back-face culling (triangles facing away from camera are discarded)
 	glEnable(GL_CULL_FACE);
-	//glDisable(GL_CULL_FACE);
 
 	// Enable sRGB-correct framebuffer if you have sRGB textures / gamma-correct lighting
 	glEnable(GL_FRAMEBUFFER_SRGB);
 
 	// Set a reasonable clear color (background)
-	glClearColor(0.8f, 0.8f, 0.8f, 1.f);
+	glClearColor(0.2f, 0.2f, 0.2f, 1.f);
 	
 	// END
 
@@ -200,13 +193,31 @@ int main() try
 	// Basel/Seif code edit
     // START
 
-    // === Load Parlahti mesh with rapidobj ===
-    MeshGL terrainMesh;
+	struct MeshGL
+{
+    GLuint vao = 0;
+    GLuint vboPositions = 0;
+    GLuint vboNormals   = 0;
+    GLsizei vertexCount = 0;
+	GLuint vboTexcoords = 0;
+};
+
+struct MeshGLColored
+	{
+		GLuint vao = 0;
+		GLuint vboPositions = 0;
+		GLuint vboNormals   = 0;
+		GLuint vboColors    = 0;  // NEW: per-vertex colours
+		GLsizei vertexCount = 0;
+	};
+
+	// === Load Parlahti mesh with rapidobj ===
+	MeshGL terrainMesh;
 
     // 1) Parse the OBJ file
     rapidobj::Result objResult = rapidobj::ParseFile("assets/cw2/parlahti.obj");
-
-    // Check for errors
+    
+	// Check for errors
     if (objResult.error)
     {
         throw Error("Fail", objResult.error.code.message());
@@ -219,47 +230,62 @@ int main() try
     auto const& attrib = objResult.attributes;
     auto const& shapes = objResult.shapes;
 
-    // 2) Flatten mesh into per-vertex arrays (no indexing, simpler)
-    std::vector<Vec3f> positions;
-    std::vector<Vec3f> normals;
 
-    // Iterate over all shapes and their indices
-    for (auto const& shape : shapes)
-    {
-        auto const& mesh = shape.mesh;
+	// 2) Flatten mesh into per-vertex arrays (no indexing, simpler)
+	std::vector<Vec3f> positions;
+	std::vector<Vec3f> normals;
+	std::vector<Vec2f> texcoords;
 
-        for (auto const& idx : mesh.indices)
-        {
-            // Position
-            Vec3f pos{0.f, 0.f, 0.f};
-            if (idx.position_index >= 0)
-            {
-                std::size_t pi = static_cast<std::size_t>(idx.position_index) * 3;
-                pos[0] = attrib.positions[pi + 0];
-                pos[1] = attrib.positions[pi + 1];
-                pos[2] = attrib.positions[pi + 2];
-            }
-            positions.push_back(pos);
+	for (auto const& shape : shapes)
+	{
+		auto const& mesh = shape.mesh;
 
-            // Normal
-            Vec3f nrm{0.f, 1.f, 0.f}; // default up if no normal
-            if (idx.normal_index >= 0)
-            {
-                std::size_t ni = static_cast<std::size_t>(idx.normal_index) * 3;
-                nrm[0] = attrib.normals[ni + 0];
-                nrm[1] = attrib.normals[ni + 1];
-                nrm[2] = attrib.normals[ni + 2];
-            }
-            normals.push_back(nrm);
-        }
-    }
+		for (auto const& idx : mesh.indices)
+		{
+			// --- Position ---
+			Vec3f pos{0.f, 0.f, 0.f};
+			if (idx.position_index >= 0)
+			{
+				std::size_t pi = static_cast<std::size_t>(idx.position_index) * 3;
+				pos[0] = attrib.positions[pi + 0];
+				pos[1] = attrib.positions[pi + 1];
+				pos[2] = attrib.positions[pi + 2];
+			}
+			positions.push_back(pos);
+
+			// --- Normal ---
+			Vec3f nrm{0.f, 1.f, 0.f}; // default up if no normal
+			if (idx.normal_index >= 0)
+			{
+				std::size_t ni = static_cast<std::size_t>(idx.normal_index) * 3;
+				nrm[0] = attrib.normals[ni + 0];
+				nrm[1] = attrib.normals[ni + 1];
+				nrm[2] = attrib.normals[ni + 2];
+			}
+			normals.push_back(nrm);
+
+			// --- Texcoord (UV) ---
+			Vec2f uv{0.f, 0.f};
+			if (idx.texcoord_index >= 0)
+			{
+				std::size_t ti = static_cast<std::size_t>(idx.texcoord_index) * 2;
+				uv = Vec2f{
+					attrib.texcoords[ti + 0],
+					attrib.texcoords[ti + 1]
+				};
+			}
+			texcoords.push_back(uv);
+		}
+	}
+
+	// === Create VAO for terrain ===
+	glGenVertexArrays(1, &terrainMesh.vao);
+	glBindVertexArray(terrainMesh.vao);
+
 
     // Store vertex count for drawing
     terrainMesh.vertexCount = static_cast<GLsizei>(positions.size());
 
-    // === Create VBOs and VAO for terrain mesh ===
-    glGenVertexArrays(1, &terrainMesh.vao);
-    glBindVertexArray(terrainMesh.vao);
 
     // --- Positions VBO (location = 0) ---
     glGenBuffers(1, &terrainMesh.vboPositions);
@@ -299,9 +325,6 @@ int main() try
         (void*)0
     );
 
-    // Unbind VAO & VBOs (good practice)
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
 
     ShaderProgram terrainProgram({
         { GL_VERTEX_SHADER,   "assets/cw2/default.vert" },
@@ -337,7 +360,34 @@ int main() try
 	);
 
 
-    // Create VAO/VBO for UFO (same pattern as terrain)
+
+
+
+	// --- Texcoords VBO (location = 3) ---
+	glGenBuffers(1, &terrainMesh.vboTexcoords);
+	glBindBuffer(GL_ARRAY_BUFFER, terrainMesh.vboTexcoords);
+	glBufferData(
+		GL_ARRAY_BUFFER,
+		texcoords.size() * sizeof(Vec2f),
+		texcoords.data(),
+		GL_STATIC_DRAW
+	);
+	glEnableVertexAttribArray(3);
+	glVertexAttribPointer(
+		3,                  // layout(location = 3)
+		2,                  // u, v
+		GL_FLOAT,
+		GL_FALSE,
+		sizeof(Vec2f),
+		(void*)0
+	);
+
+
+	// Unbind VAO & VBOs (good practice)
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindVertexArray(0);
+
+	// Create VAO/VBO for UFO (same pattern as terrain)
     glGenVertexArrays(1, &ufoMesh.vao);
     glBindVertexArray(ufoMesh.vao);
 
@@ -354,6 +404,7 @@ int main() try
         0, 3, GL_FLOAT, GL_FALSE,
         sizeof(Vec3f), (void*)0
     );
+
 
     glGenBuffers(1, &ufoMesh.vboNormals);
     glBindBuffer(GL_ARRAY_BUFFER, ufoMesh.vboNormals);
@@ -374,6 +425,171 @@ int main() try
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
+
+	GLuint terrainTexture = load_texture_2d("assets/cw2/L4343A-4k.jpeg");
+
+ShaderProgram landingProgram({
+    { GL_VERTEX_SHADER,   "assets/cw2/landing.vert" },
+    { GL_FRAGMENT_SHADER, "assets/cw2/landing.frag" }
+});
+
+	// === Static camera + transforms + light ===
+
+// We’ll build view each frame, but we can store these
+
+// Landing pad positions (you will tweak these by flying around to put them in the sea)
+Vec3f landingPadPos1{ 1.f, -.7f, -20.f };
+Vec3f landingPadPos2{ 8.f, -.7f, 40.f }; 
+
+
+
+	// === Load Landing Pad mesh (coloured, per material) ===
+
+	MeshGLColored landingMesh;
+
+	rapidobj::Result lpResult = rapidobj::ParseFile("assets/cw2/landingpad.obj");
+	if (lpResult.error)
+	{
+		throw Error("Failed to load landingpad.obj: {}", lpResult.error.code.message());
+	}
+
+	rapidobj::Triangulate(lpResult);
+
+	auto const& lpAttrib    = lpResult.attributes;
+	auto const& lpShapes    = lpResult.shapes;
+	auto const& lpMaterials = lpResult.materials;
+
+	std::vector<Vec3f> lpPositions;
+	std::vector<Vec3f> lpNormals;
+	std::vector<Vec3f> lpColors;
+
+	for (auto const& shape : lpShapes)
+	{
+		auto const& mesh = shape.mesh;
+
+		// Each 3 indices (after Triangulate) correspond to 1 triangle = 1 face
+		for (std::size_t idx_i = 0; idx_i < mesh.indices.size(); ++idx_i)
+		{
+			auto const& idx = mesh.indices[idx_i];
+
+			// --- Position ---
+			Vec3f pos{ 0.f, 0.f, 0.f };
+			if (idx.position_index >= 0)
+			{
+				std::size_t pi = static_cast<std::size_t>(idx.position_index) * 3;
+				pos = Vec3f{
+					lpAttrib.positions[pi + 0],
+					lpAttrib.positions[pi + 1],
+					lpAttrib.positions[pi + 2]
+				};
+			}
+			lpPositions.push_back(pos);
+
+			// --- Normal ---
+			Vec3f nrm{ 0.f, 1.f, 0.f };
+			if (idx.normal_index >= 0)
+			{
+				std::size_t ni = static_cast<std::size_t>(idx.normal_index) * 3;
+				nrm = Vec3f{
+					lpAttrib.normals[ni + 0],
+					lpAttrib.normals[ni + 1],
+					lpAttrib.normals[ni + 2]
+				};
+			}
+			lpNormals.push_back(nrm);
+
+			// --- Colour from material diffuse (Kd) ---
+			// Figure out which face we are on and thus which material
+			std::size_t faceIndex = idx_i / 3; // 3 indices per triangle
+			int matId = -1;
+			if (!mesh.material_ids.empty() && faceIndex < mesh.material_ids.size())
+				matId = mesh.material_ids[faceIndex];
+
+			Vec3f col{ 1.f, 1.f, 1.f }; // default white if something's off
+			if (matId >= 0 && static_cast<std::size_t>(matId) < lpMaterials.size())
+			{
+				auto const& mat = lpMaterials[matId];
+				col = Vec3f{
+					mat.diffuse[0],
+					mat.diffuse[1],
+					mat.diffuse[2]
+				};
+			}
+			lpColors.push_back(col);
+		}
+	}
+
+	landingMesh.vertexCount = static_cast<GLsizei>(lpPositions.size());
+
+	
+	
+	// === Create VAO + VBOs for landing pad ===
+
+	glGenVertexArrays(1, &landingMesh.vao);
+	glBindVertexArray(landingMesh.vao);
+
+	// Positions at location = 0
+	glGenBuffers(1, &landingMesh.vboPositions);
+	glBindBuffer(GL_ARRAY_BUFFER, landingMesh.vboPositions);
+	glBufferData(
+		GL_ARRAY_BUFFER,
+		lpPositions.size() * sizeof(Vec3f),
+		lpPositions.data(),
+		GL_STATIC_DRAW
+	);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(
+		0,
+		3,
+		GL_FLOAT,
+		GL_FALSE,
+		sizeof(Vec3f),
+		(void*)0
+	);
+
+	// Normals at location = 1
+	glGenBuffers(1, &landingMesh.vboNormals);
+	glBindBuffer(GL_ARRAY_BUFFER, landingMesh.vboNormals);
+	glBufferData(
+		GL_ARRAY_BUFFER,
+		lpNormals.size() * sizeof(Vec3f),
+		lpNormals.data(),
+		GL_STATIC_DRAW
+	);
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(
+		1,
+		3,
+		GL_FLOAT,
+		GL_FALSE,
+		sizeof(Vec3f),
+		(void*)0
+	);
+
+	// Colours at location = 3  (same location index you used for terrain texcoords,
+	// but in a DIFFERENT VAO, so that's fine)
+	glGenBuffers(1, &landingMesh.vboColors);
+	glBindBuffer(GL_ARRAY_BUFFER, landingMesh.vboColors);
+	glBufferData(
+		GL_ARRAY_BUFFER,
+		lpColors.size() * sizeof(Vec3f),
+		lpColors.data(),
+		GL_STATIC_DRAW
+	);
+	glEnableVertexAttribArray(3);
+	glVertexAttribPointer(
+		3,
+		3,          // r, g, b
+		GL_FLOAT,
+		GL_FALSE,
+		sizeof(Vec3f),
+		(void*)0
+	);
+
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindVertexArray(0);
+
+
 
 	// END
     OGL_CHECKPOINT_ALWAYS();
@@ -439,11 +655,16 @@ Mat44f viewProj = proj;
 // Terrain model is identity, so MVP_terrain = viewProj * model
 Mat44f terrainMvp = viewProj * model;
 
-// UFO model: lifted above ground and squashed into a saucer
-Mat44f ufoModel =
-    make_translation(Vec3f{ 0.f, 3.f, 0.f }) *
-    make_scaling(0.5f, 0.5f, 0.5f);
+// UFO model: above landing pad A (Pad A = landingPadPos1)
+Vec3f ufoPos = Vec3f{
+    landingPadPos1.x,
+    landingPadPos1.y + 0.5f,   // 2 units above the pad
+    landingPadPos1.z
+};
 
+Mat44f ufoModel =
+    make_translation(ufoPos) *
+    make_scaling(0.5f, 0.5f, 0.5f);
 // UFO MVP
 Mat44f ufoMvp = viewProj * ufoModel;
 
@@ -490,6 +711,8 @@ if (gCamera.moveUp)
 if (gCamera.moveDown)
 	gCamera.position = gCamera.position - up * moveStep;
 
+std::print( "Camera position: ({:.2f}, {:.2f}, {:.2f})\n", gCamera.position.x, gCamera.position.y, gCamera.position.z );
+
 // 4) Build view matrix from camera position + orientation
 Mat33f normalMatrix = mat44_to_mat33( transpose(invert(model)) );
 
@@ -508,6 +731,8 @@ glUseProgram(progId);
 
 // Look up uniforms once per frame
 GLint locProj         = glGetUniformLocation(progId, "uProj");
+
+// lighting
 GLint locLightDir     = glGetUniformLocation(progId, "uLightDir");
 GLint locBaseColor    = glGetUniformLocation(progId, "uBaseColor");
 GLint locAmbientColor = glGetUniformLocation(progId, "uAmbientColor");
@@ -529,6 +754,15 @@ glUniformMatrix4fv(locProj, 1, GL_TRUE, terrainMvp.v);
 
 // Terrain colour from your 1.3 work
 glUniform3fv(locBaseColor, 1, &baseColor[0]);
+
+
+// texture
+glActiveTexture(GL_TEXTURE0);
+glBindTexture(GL_TEXTURE_2D, terrainTexture);
+GLint locTexture = glGetUniformLocation(progId, "uTexture");
+glUniform1i(locTexture, 0);
+
+// draw terrain
 
 glBindVertexArray(terrainMesh.vao);
 glDrawArrays(GL_TRIANGLES, 0, terrainMesh.vertexCount);
@@ -556,16 +790,42 @@ glDrawArrays(GL_TRIANGLES, ufoBaseVertexCount, ufoTopVertexCount);
 glBindVertexArray(0);
 
 
+// === Draw landing pad twice (no duplicated data) ===
 
+		GLuint landingProgId = landingProgram.programId();
+		glUseProgram(landingProgId);
 
-// --- Draw UFO ---
-glUniformMatrix4fv(locProj, 1, GL_TRUE, ufoMvp.v);
-// normalMatrix can stay the same for now (only uniform scaling + translation)
+		// Normal matrix (location = 2 in the vertex shader)
+		glUniformMatrix3fv(
+			2,
+			1, GL_TRUE, normalMatrix.v
+		);
 
-glBindVertexArray(ufoMesh.vao);
-glDrawArrays(GL_TRIANGLES, 0, ufoMesh.vertexCount);
-glBindVertexArray(0);
-// Task1.5 end
+		// Lighting uniforms
+		GLint lpLocLightDir     = glGetUniformLocation(landingProgId, "uLightDir");
+		GLint lpLocAmbientColor = glGetUniformLocation(landingProgId, "uAmbientColor");
+		glUniform3fv(lpLocLightDir,     1, &lightDir[0]);
+		glUniform3fv(lpLocAmbientColor, 1, &ambientColor[0]);
+
+		// MVP uniform location
+		GLint lpLocProj = glGetUniformLocation(landingProgId, "uProj");
+
+		glBindVertexArray(landingMesh.vao);
+
+		// First landing pad
+		Mat44f lpModel1 = make_translation(landingPadPos1);
+		Mat44f lpMvp1   = proj * lpModel1;  // proj already includes camera transform
+		glUniformMatrix4fv(lpLocProj, 1, GL_TRUE, lpMvp1.v);
+		glDrawArrays(GL_TRIANGLES, 0, landingMesh.vertexCount);
+
+		// Second landing pad
+		Mat44f lpModel2 = make_translation(landingPadPos2);
+		Mat44f lpMvp2   = proj * lpModel2;
+		glUniformMatrix4fv(lpLocProj, 1, GL_TRUE, lpMvp2.v);
+		glDrawArrays(GL_TRIANGLES, 0, landingMesh.vertexCount);
+
+		glBindVertexArray(0);
+
 
 		OGL_CHECKPOINT_DEBUG();
 

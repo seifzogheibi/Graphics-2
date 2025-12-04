@@ -42,8 +42,7 @@ void buildUfoFlatArrays(std::vector<Vec3f>& outPositions,
 {
     outPositions.clear();
     outNormals.clear();
-
-    float const halfHeight  = 0.5f;
+    
     int   const segments    = 48;
     // --- Shape parameters you can tweak ---
     float const radiusBody       = 2.0f;   // base radius of the saucer body

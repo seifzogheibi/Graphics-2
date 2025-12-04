@@ -9,5 +9,4 @@ Makefile
 *.obj
 *.a
 *.so
-*.exe
 *.log
