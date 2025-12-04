@@ -199,6 +199,15 @@ int main() try
 	GLuint vboTexcoords = 0;
 };
 
+struct MeshGLColored
+	{
+		GLuint vao = 0;
+		GLuint vboPositions = 0;
+		GLuint vboNormals   = 0;
+		GLuint vboColors    = 0;  // NEW: per-vertex colours
+		GLsizei vertexCount = 0;
+	};
+
 	// === Load Parlahti mesh with rapidobj ===
 	MeshGL terrainMesh;
 
@@ -349,6 +358,12 @@ ShaderProgram terrainProgram({
 
 GLuint terrainTexture = load_texture_2d("assets/cw2/L4343A-4k.jpeg");
 
+ShaderProgram landingProgram({
+    { GL_VERTEX_SHADER,   "assets/cw2/landing.vert" },
+    { GL_FRAGMENT_SHADER, "assets/cw2/landing.frag" }
+});
+
+
 
 
 	// === Static camera + transforms + light ===
@@ -363,6 +378,159 @@ Mat44f model = kIdentity44f;
 Vec3f lightDir    = normalize(Vec3f{ 0.f, 1.f, -1.f });  // as spec says (0,1,-1)
 Vec3f baseColor   = { 0.6f, 0.7f, 0.6f };               // terrain-ish colour
 Vec3f ambientColor= { 0.1f, 0.1f, 0.1f };
+
+// Landing pad positions (you will tweak these by flying around to put them in the sea)
+Vec3f landingPadPos1{ 1.f, -.7f, -20.f };
+Vec3f landingPadPos2{ 8.f, -.7f, 40.f }; 
+
+
+
+	// === Load Landing Pad mesh (coloured, per material) ===
+
+	MeshGLColored landingMesh;
+
+	rapidobj::Result lpResult = rapidobj::ParseFile("assets/cw2/landingpad.obj");
+	if (lpResult.error)
+	{
+		throw Error("Failed to load landingpad.obj: {}", lpResult.error.code.message());
+	}
+
+	rapidobj::Triangulate(lpResult);
+
+	auto const& lpAttrib    = lpResult.attributes;
+	auto const& lpShapes    = lpResult.shapes;
+	auto const& lpMaterials = lpResult.materials;
+
+	std::vector<Vec3f> lpPositions;
+	std::vector<Vec3f> lpNormals;
+	std::vector<Vec3f> lpColors;
+
+	for (auto const& shape : lpShapes)
+	{
+		auto const& mesh = shape.mesh;
+
+		// Each 3 indices (after Triangulate) correspond to 1 triangle = 1 face
+		for (std::size_t idx_i = 0; idx_i < mesh.indices.size(); ++idx_i)
+		{
+			auto const& idx = mesh.indices[idx_i];
+
+			// --- Position ---
+			Vec3f pos{ 0.f, 0.f, 0.f };
+			if (idx.position_index >= 0)
+			{
+				std::size_t pi = static_cast<std::size_t>(idx.position_index) * 3;
+				pos = Vec3f{
+					lpAttrib.positions[pi + 0],
+					lpAttrib.positions[pi + 1],
+					lpAttrib.positions[pi + 2]
+				};
+			}
+			lpPositions.push_back(pos);
+
+			// --- Normal ---
+			Vec3f nrm{ 0.f, 1.f, 0.f };
+			if (idx.normal_index >= 0)
+			{
+				std::size_t ni = static_cast<std::size_t>(idx.normal_index) * 3;
+				nrm = Vec3f{
+					lpAttrib.normals[ni + 0],
+					lpAttrib.normals[ni + 1],
+					lpAttrib.normals[ni + 2]
+				};
+			}
+			lpNormals.push_back(nrm);
+
+			// --- Colour from material diffuse (Kd) ---
+			// Figure out which face we are on and thus which material
+			std::size_t faceIndex = idx_i / 3; // 3 indices per triangle
+			int matId = -1;
+			if (!mesh.material_ids.empty() && faceIndex < mesh.material_ids.size())
+				matId = mesh.material_ids[faceIndex];
+
+			Vec3f col{ 1.f, 1.f, 1.f }; // default white if something's off
+			if (matId >= 0 && static_cast<std::size_t>(matId) < lpMaterials.size())
+			{
+				auto const& mat = lpMaterials[matId];
+				col = Vec3f{
+					mat.diffuse[0],
+					mat.diffuse[1],
+					mat.diffuse[2]
+				};
+			}
+			lpColors.push_back(col);
+		}
+	}
+
+	landingMesh.vertexCount = static_cast<GLsizei>(lpPositions.size());
+
+	
+	
+	// === Create VAO + VBOs for landing pad ===
+
+	glGenVertexArrays(1, &landingMesh.vao);
+	glBindVertexArray(landingMesh.vao);
+
+	// Positions at location = 0
+	glGenBuffers(1, &landingMesh.vboPositions);
+	glBindBuffer(GL_ARRAY_BUFFER, landingMesh.vboPositions);
+	glBufferData(
+		GL_ARRAY_BUFFER,
+		lpPositions.size() * sizeof(Vec3f),
+		lpPositions.data(),
+		GL_STATIC_DRAW
+	);
+	glEnableVertexAttribArray(0);
+	glVertexAttribPointer(
+		0,
+		3,
+		GL_FLOAT,
+		GL_FALSE,
+		sizeof(Vec3f),
+		(void*)0
+	);
+
+	// Normals at location = 1
+	glGenBuffers(1, &landingMesh.vboNormals);
+	glBindBuffer(GL_ARRAY_BUFFER, landingMesh.vboNormals);
+	glBufferData(
+		GL_ARRAY_BUFFER,
+		lpNormals.size() * sizeof(Vec3f),
+		lpNormals.data(),
+		GL_STATIC_DRAW
+	);
+	glEnableVertexAttribArray(1);
+	glVertexAttribPointer(
+		1,
+		3,
+		GL_FLOAT,
+		GL_FALSE,
+		sizeof(Vec3f),
+		(void*)0
+	);
+
+	// Colours at location = 3  (same location index you used for terrain texcoords,
+	// but in a DIFFERENT VAO, so that's fine)
+	glGenBuffers(1, &landingMesh.vboColors);
+	glBindBuffer(GL_ARRAY_BUFFER, landingMesh.vboColors);
+	glBufferData(
+		GL_ARRAY_BUFFER,
+		lpColors.size() * sizeof(Vec3f),
+		lpColors.data(),
+		GL_STATIC_DRAW
+	);
+	glEnableVertexAttribArray(3);
+	glVertexAttribPointer(
+		3,
+		3,          // r, g, b
+		GL_FLOAT,
+		GL_FALSE,
+		sizeof(Vec3f),
+		(void*)0
+	);
+
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+	glBindVertexArray(0);
+
 
 
 	// END
@@ -464,6 +632,8 @@ if (gCamera.moveUp)
 if (gCamera.moveDown)
 	gCamera.position = gCamera.position - up * moveStep;
 
+std::print( "Camera position: ({:.2f}, {:.2f}, {:.2f})\n", gCamera.position.x, gCamera.position.y, gCamera.position.z );
+
 // 4) Build view matrix from camera position + orientation
 Mat33f normalMatrix = mat44_to_mat33( transpose(invert(model)) );
 
@@ -508,6 +678,41 @@ glBindVertexArray(terrainMesh.vao);
 glDrawArrays(GL_TRIANGLES, 0, terrainMesh.vertexCount);
 glBindVertexArray(0);
 
+// === Draw landing pad twice (no duplicated data) ===
+
+		GLuint landingProgId = landingProgram.programId();
+		glUseProgram(landingProgId);
+
+		// Normal matrix (location = 2 in the vertex shader)
+		glUniformMatrix3fv(
+			2,
+			1, GL_TRUE, normalMatrix.v
+		);
+
+		// Lighting uniforms
+		GLint lpLocLightDir     = glGetUniformLocation(landingProgId, "uLightDir");
+		GLint lpLocAmbientColor = glGetUniformLocation(landingProgId, "uAmbientColor");
+		glUniform3fv(lpLocLightDir,     1, &lightDir[0]);
+		glUniform3fv(lpLocAmbientColor, 1, &ambientColor[0]);
+
+		// MVP uniform location
+		GLint lpLocProj = glGetUniformLocation(landingProgId, "uProj");
+
+		glBindVertexArray(landingMesh.vao);
+
+		// First landing pad
+		Mat44f lpModel1 = make_translation(landingPadPos1);
+		Mat44f lpMvp1   = proj * lpModel1;  // proj already includes camera transform
+		glUniformMatrix4fv(lpLocProj, 1, GL_TRUE, lpMvp1.v);
+		glDrawArrays(GL_TRIANGLES, 0, landingMesh.vertexCount);
+
+		// Second landing pad
+		Mat44f lpModel2 = make_translation(landingPadPos2);
+		Mat44f lpMvp2   = proj * lpModel2;
+		glUniformMatrix4fv(lpLocProj, 1, GL_TRUE, lpMvp2.v);
+		glDrawArrays(GL_TRIANGLES, 0, landingMesh.vertexCount);
+
+		glBindVertexArray(0);
 
 		OGL_CHECKPOINT_DEBUG();
 
