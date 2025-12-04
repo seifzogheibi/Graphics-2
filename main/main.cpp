@@ -167,9 +167,9 @@ int main() try
 	// Enable sRGB-correct framebuffer if you have sRGB textures / gamma-correct lighting
 	glEnable(GL_FRAMEBUFFER_SRGB);
 
-	// Set a reasonable clear color (background)
-	glClearColor(0.8f, 0.8f, 0.8f, 1.f);
-	
+	// Set a dark  clear color
+	glClearColor( .2f, .2f, .2f, 1.f );
+
 	// END
 
 
