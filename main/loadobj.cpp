@@ -44,10 +44,16 @@ for( auto const& shape : res.shapes )
 			res.attributes.normals[idx.normal_index*3+2]
 		} );
 
-		ret.texcoords.emplace_back( Vec2f{
-			res.attributes.texcoords[idx.texcoord_index*2+0],
-			res.attributes.texcoords[idx.texcoord_index*2+1]
-		} );
+		        // Safe texcoord fetch: if no texcoord, use (0,0)
+        Vec2f uv{ 0.f, 0.f };
+        if( idx.texcoord_index >= 0 )
+        {
+            std::size_t t = static_cast<std::size_t>(idx.texcoord_index) * 2;
+            uv.x = res.attributes.texcoords[t + 0];
+            uv.y = res.attributes.texcoords[t + 1];
+        }
+        ret.texcoords.emplace_back( uv );
+
 
 		// Always triangles, so we can find the face index by dividing the vertex index by three
 		auto const& mat = res.materials[shape.mesh.material_ids[i/3]];
@@ -57,12 +63,9 @@ for( auto const& shape : res.shapes )
 				mat.ambient[1],
 				mat.ambient[2]
 			} );
-
 			ret.shininess.emplace_back( mat.shininess );
 			
-	
 		}
 }
 return ret;
 }
-

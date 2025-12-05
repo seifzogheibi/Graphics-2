@@ -105,6 +105,7 @@ GLuint create_vao( SimpleMeshData const& aMeshData )
 			0,
 			(void*)0
 		);
+		glEnableVertexAttribArray( 3 );   // <-- ADD THIS
 	}
 	else{
 		glBindBuffer( GL_ARRAY_BUFFER, colorsVBO );

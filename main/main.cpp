@@ -502,7 +502,7 @@ glUniformMatrix3fv(
 // Camera position (location = 6)
 glUniform3fv(6, 1, &gCamera.position.x);
 
-// Point lights (locations 7, 8, 9)
+// Point lights (locations 7-9, 10-12, 13-15)
 Vec3f pointLightPositions[3] = {
     gPointLights[0].position,
     gPointLights[1].position,
@@ -519,12 +519,12 @@ GLint pointLightEnabled[3] = {
     gPointLights[2].enabled ? 1 : 0
 };
 
-glUniform3fv(7, 3, &pointLightPositions[0].x);   // all 3 positions
-glUniform3fv(8, 3, &pointLightColors[0].x);      // all 3 colors
-glUniform1iv(9, 3, pointLightEnabled);            // all 3 enabled flags
+glUniform3fv(7, 3, &pointLightPositions[0].x);   // locations 7, 8, 9
+glUniform3fv(10, 3, &pointLightColors[0].x);     // locations 10, 11, 12
+glUniform1iv(13, 3, pointLightEnabled);          // locations 13, 14, 15
 
-// Directional light enabled (location = 10)
-glUniform1i(10, gDirectionalLightEnabled ? 1 : 0);
+// Directional light enabled (location = 16)
+glUniform1i(16, gDirectionalLightEnabled ? 1 : 0);
 
 // ====================
 // Draw TERRAIN

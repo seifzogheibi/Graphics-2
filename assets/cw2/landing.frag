@@ -11,10 +11,10 @@ layout (location = 2) uniform vec3 uLightDir;
 layout (location = 4) uniform vec3 uAmbientColor;
 
 layout (location = 6) uniform vec3 uCameraPos;
-layout (location = 7) uniform vec3 uPointLightPos[3];
-layout (location = 8) uniform vec3 uPointLightColor[3];
-layout (location = 9) uniform int  uPointLightEnabled[3];
-layout (location = 10) uniform int uDirectionalEnabled;
+layout (location = 7) uniform vec3 uPointLightPos[3];      // uses 7, 8, 9
+layout (location = 10) uniform vec3 uPointLightColor[3];   // uses 10, 11, 12
+layout (location = 13) uniform int  uPointLightEnabled[3]; // uses 13, 14, 15
+layout (location = 16) uniform int uDirectionalEnabled;    // uses 16
 
 out vec4 oColor;
 
