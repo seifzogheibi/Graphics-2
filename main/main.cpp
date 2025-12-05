@@ -703,7 +703,7 @@ Vec3f landingPadPos2{ 8.f, -.7f, 40.f };
         // Start position (above landing pad A)
         Vec3f ufoStartPos{
             landingPadPos1.x,
-            landingPadPos1.y + 0.5f,
+            landingPadPos1.y + 1.25f,
             landingPadPos1.z
         };
 
@@ -971,7 +971,7 @@ glBindVertexArray(0);
 // ====================
 
 // Colours
-Vec3f saucerColor{ 0.35f, 0.35f, 0.38f };  // dark-ish grey base
+Vec3f saucerColor{ 0.3f, 0.55f, 0.95f };  // dark-ish grey base
 Vec3f domeColor  { 0.3f,  0.55f, 0.95f };  // light blue dome+antenna
 
 glBindVertexArray(ufoMesh.vao);

@@ -227,12 +227,12 @@ void buildUfoFlatArrays(
 
     // -------- rocket dimensions ----------
     int   const slices       = 24;
-    float const bodyRadius   = 1.0f;
+    float const bodyRadius   = 0.60f;
     float const bodyHeight   = 4.0f;
     float const engineHeight = 0.5f;
-    float const noseHeight   = 1.0f;
+    float const noseHeight   = 1.2f;
     float const finHeight    = 1.0f;
-    float const finThickness = 0.2f;
+    float const finThickness = 0.1f;
     float const finWidth     = 0.6f;
 
     float const bodyBottomY  = -bodyHeight * 0.5f;
@@ -313,13 +313,13 @@ void buildUfoFlatArrays(
     addCone(
         outPositions, outNormals,
         slices,
-        bodyRadius * 0.8f,
+        bodyRadius * 1.0f,
         noseBaseY,
         noseTipY
     );
 
     // 5) antenna cylinder above nose
-    float const antennaRadius = 0.1f;
+    float const antennaRadius = 0.05f;
     float const antennaHeight = 0.8f;
     float const antennaBaseY  = noseTipY;
     float const antennaTopY   = antennaBaseY + antennaHeight;
@@ -333,9 +333,9 @@ void buildUfoFlatArrays(
     );
 
     // 6) tiny cone tip at very top
-    float const tipRadius = 0.15f;
+    float const tipRadius = 0.05f;
     float const tipBaseY  = antennaTopY;
-    float const tipTopY   = tipBaseY + 0.25f;
+    float const tipTopY   = tipBaseY + 0.5f;
 
     addCone(
         outPositions, outNormals,
