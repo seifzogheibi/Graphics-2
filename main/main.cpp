@@ -68,7 +68,37 @@ namespace
 		double lastMouseY = 0.0;
 	};
 
+	// 1.7
+	struct VehicleAnim
+	{
+		bool active = false;   // animation has been started at least once
+		bool paused = false;   // toggled by F
+		float time = 0.f;      // seconds since animation start
+	};
+
 	Camera gCamera;// 1.5?
+	VehicleAnim gUfoAnim;
+
+	// Simple cubic Bézier in 3D
+	Vec3f bezier3(
+		Vec3f const& A,
+		Vec3f const& B,
+		Vec3f const& C,
+		Vec3f const& D,
+		float t
+	)
+	{
+		float it  = 1.f - t;
+		float it2 = it * it;
+		float t2  = t  * t;
+
+		return
+			(it2 * it) * A +
+			(3.f * it2 * t) * B +
+			(3.f * it  * t2) * C +
+			(t2 * t)        * D;
+	}
+
 
 	// Forward declarations for extra callbacks
 	void glfw_callback_mouse_button_( GLFWwindow* window, int button, int action, int mods );
@@ -637,6 +667,13 @@ double currentTime = glfwGetTime();
 float dt = static_cast<float>(currentTime - lastTime);
 lastTime = currentTime;
 
+// Update UFO animation time (task1.7)
+if (gUfoAnim.active && !gUfoAnim.paused)
+{
+    gUfoAnim.time += dt;
+}
+
+
 // 1) Aspect ratio and projection matrix (depends on framebuffer size)
 float aspect     = fbwidth / fbheight;
 float fovRadians = 60.0f * std::numbers::pi_v<float> / 180.0f;
@@ -656,21 +693,75 @@ Mat44f viewProj = proj;
 Mat44f terrainMvp = viewProj * model;
 
 // UFO model: above landing pad A (Pad A = landingPadPos1)
-Vec3f ufoPos = Vec3f{
+Vec3f ufoStartPos{
     landingPadPos1.x,
     landingPadPos1.y + 1.25f,   // slightly above the pad
     landingPadPos1.z
 };
 
-// simple constant yaw (e.g. 45 degrees)
-float ufoYaw = 0.25f * std::numbers::pi_v<float>; // 45° in radians
+// Default: not moving yet
+Vec3f ufoPos = ufoStartPos;
+float ufoYaw = 0.0f;
 
+// Only animate if active
+if (gUfoAnim.active)
+{
+    // Total time to reach "space"
+    float totalTime = 8.0f; // seconds, tweakable
+
+    float tAnim = gUfoAnim.time;
+    if (tAnim < 0.f) tAnim = 0.f;
+
+    // Normalised [0,1]
+    float u = tAnim / totalTime;
+    if (u > 1.f) u = 1.f;
+
+    // Ease-in (accelerating): s = u^2
+    float s = u * u;
+
+    // Define a curved path with four control points
+    Vec3f P0 = ufoStartPos;
+    Vec3f P1 = ufoStartPos + Vec3f{ 0.f,   3.f,   0.f };
+    Vec3f P2 = ufoStartPos + Vec3f{ 0.f,  15.f, -20.f };
+    Vec3f P3 = ufoStartPos + Vec3f{ 0.f,  40.f, -80.f };
+
+    // Current position along the curve
+    ufoPos = bezier3(P0, P1, P2, P3, s);
+
+    // Approximate direction by looking slightly ahead on the same curve
+    float eps = 0.01f;
+    float s2  = s + eps;
+    if (s2 > 1.f) s2 = 1.f;
+
+    Vec3f ufoPosAhead = bezier3(P0, P1, P2, P3, s2);
+    Vec3f vel = ufoPosAhead - ufoPos;
+
+    // Horizontal direction for yaw (keep rocket upright)
+    Vec3f velXZ{ vel.x, 0.f, vel.z };
+    float lenXZ = length(velXZ);
+    if (lenXZ > 1e-3f)
+    {
+        velXZ = velXZ / lenXZ;
+        // Our camera forward uses (sin(yaw), 0, -cos(yaw))
+        // -> invert to get yaw from direction:
+        ufoYaw = std::atan2(velXZ.x, -velXZ.z);
+    }
+}
+else
+{
+    // If animation is not active (before F or after R),
+    // keep rocket at start position, with some default orientation if you like
+    ufoPos = ufoStartPos;
+    ufoYaw = 0.25f * std::numbers::pi_v<float>; // 45 deg, optional
+}
+
+// Build model matrix: T * R * S
 Mat44f ufoModel =
     make_translation(ufoPos) *
     make_rotation_y(ufoYaw) *
     make_scaling(0.5f, 0.5f, 0.5f);
 
-// UFO MVP
+// MVP
 Mat44f ufoMvp = viewProj * ufoModel;
 
 //Task1.5 end
@@ -912,6 +1003,32 @@ namespace
 	{
 		gCamera.slow = pressed || (aAction == GLFW_REPEAT);
 	}
+
+
+		    // --- Task 1.7: UFO animation controls ---
+    if (aKey == GLFW_KEY_F && aAction == GLFW_PRESS)
+    {
+        if (!gUfoAnim.active)
+        {
+            // Start animation from the beginning
+            gUfoAnim.active = true;
+            gUfoAnim.paused = false;
+            gUfoAnim.time   = 0.f;
+        }
+        else
+        {
+            // Toggle pause/unpause
+            gUfoAnim.paused = !gUfoAnim.paused;
+        }
+    }
+
+    if (aKey == GLFW_KEY_R && aAction == GLFW_PRESS)
+    {
+        // Reset to original position and fully stop animation
+        gUfoAnim.active = false;
+        gUfoAnim.paused = false;
+        gUfoAnim.time   = 0.f;
+    }
 
 	}
 
