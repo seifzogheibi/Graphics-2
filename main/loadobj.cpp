@@ -13,6 +13,7 @@ SimpleMeshData load_wavefront_obj( char const* aPath )
 		throw Error( "Unable to load OBJ file ’{}’: {}", aPath, res.error.code.message() 
 	);
 	}
+
 // OBJ files can define faces that are not triangles. However, OpenGL will only render triangles (and lines
 // and points), so we must triangulate any faces that are not already triangles. Fortunately, rapidobj can do
 // this for us.
@@ -62,6 +63,26 @@ for( auto const& shape : res.shapes )
 				mat.ambient[0],
 				mat.ambient[1],
 				mat.ambient[2]
+			} );
+			ret.Ka.emplace_back( Vec3f{
+				mat.ambient[0],
+				mat.ambient[1],
+				mat.ambient[2]
+			} );
+			ret.Kd.emplace_back( Vec3f{
+				mat.diffuse[0],
+				mat.diffuse[1],
+				mat.diffuse[2]
+			} );
+			ret.Ke.emplace_back( Vec3f{
+				mat.emission[0],
+				mat.emission[1],
+				mat.emission[2]
+			} );
+			ret.Ks.emplace_back( Vec3f{
+				mat.specular[0],
+				mat.specular[1],
+				mat.specular[2]
 			} );
 			ret.shininess.emplace_back( mat.shininess );
 			

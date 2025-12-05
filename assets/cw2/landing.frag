@@ -4,6 +4,10 @@
 in vec3 vNormal;
 in vec3 vPosition;
 in vec3 vColor;      // Kd
+in vec3 vAmbient; // Ka
+in vec3 vSpecular; // Ks
+in vec3 vEmissive; // Ke
+
 in float vShininess; // Ns
 
 // keep same layout indices as terrain
@@ -24,10 +28,10 @@ void main()
     vec3 V = normalize(uCameraPos - vPosition);
 
     vec3 Kd = vColor;
-    vec3 Ks = vec3(0.5);         // can tweak
+    vec3 Ks = vSpecular;        // specular from material
     float shininess = vShininess;
 
-    vec3 ambient = uAmbientColor * Kd;
+    vec3 ambient = uAmbientColor * Kd + vEmissive;
     vec3 color   = ambient;
 
     // Directional

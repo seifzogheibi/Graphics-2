@@ -239,7 +239,7 @@ struct MeshGLColored
     // Light & colors
     Vec3f lightDir     = normalize(Vec3f{ 0.f, 1.f, -1.f });  // (0,1,-1)
     Vec3f baseColor    = { 0.6f, 0.7f, 0.6f };                // terrain-ish colour
-    Vec3f ambientColor = { 0.1f, 0.1f, 0.1f };
+    Vec3f ambientColor = { 0.18f, 0.18f, 0.18f };
 
     // === UFO CPU build (from your Task1.5) – we’ll flesh this out next ===
 	MeshGL ufoMesh;
@@ -328,13 +328,13 @@ Vec3f landingPadPos2{ 8.f, -.96f, 40.f };
 	// === Setup point lights (world space) ===
 	// These are approximate positions near your space vehicle – you can tweak later.
 
-	gPointLights[0].position = Vec3f{  0.f, 15.f,   0.f };  // e.g. top centre
+	gPointLights[0].position = Vec3f{  0.f, 5.f,   0.f };  // e.g. top centre
 	gPointLights[0].color    = Vec3f{  1.f,  0.f,   0.f };  // red
 
-	gPointLights[1].position = Vec3f{  5.f, 14.f,  -3.f };  // side
+	gPointLights[1].position = Vec3f{  5.f, 5.f,  -3.f };  // side
 	gPointLights[1].color    = Vec3f{  0.f,  1.f,   0.f };  // green
 
-	gPointLights[2].position = Vec3f{ -4.f, 16.f,   2.f };  // other side
+	gPointLights[2].position = Vec3f{ -4.f, 5.f,   2.f };  // other side
 	gPointLights[2].color    = Vec3f{  0.f,  0.7f,  1.f };  // blue-ish
 
 	gPointLights[0].enabled = true;
@@ -518,6 +518,7 @@ GLint pointLightEnabled[3] = {
     gPointLights[1].enabled ? 1 : 0,
     gPointLights[2].enabled ? 1 : 0
 };
+
 
 glUniform3fv(7, 3, &pointLightPositions[0].x);   // locations 7, 8, 9
 glUniform3fv(10, 3, &pointLightColors[0].x);     // locations 10, 11, 12
