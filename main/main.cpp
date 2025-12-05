@@ -692,79 +692,126 @@ Mat44f viewProj = proj;
 // Terrain model is identity, so MVP_terrain = viewProj * model
 Mat44f terrainMvp = viewProj * model;
 
-// UFO model: above landing pad A (Pad A = landingPadPos1)
+// === Task 1.7: Animated UFO transform (position + orientation) ===
+
+// Start position (above landing pad A)
 Vec3f ufoStartPos{
     landingPadPos1.x,
     landingPadPos1.y + 1.25f,   // slightly above the pad
     landingPadPos1.z
 };
 
-// Default: not moving yet
+// Default: rocket parked on pad, pointing up
 Vec3f ufoPos = ufoStartPos;
-float ufoYaw = 0.0f;
+
+// Local rocket "forward" (nose) in model space is +Y
+// We'll compute a world-space forward vector later.
+Vec3f forwardWS{ 0.f, 1.f, 0.f };
+Vec3f rightWS  { 1.f, 0.f, 0.f };
+Vec3f upWS     { 0.f, 0.f, 1.f };
 
 // Only animate if active
 if (gUfoAnim.active)
 {
-    // Total time to reach "space"
-    float totalTime = 8.0f; // seconds, tweakable
+    // --- 1) Parametric time along the path with ease-in ---
 
+    float totalTime = 8.0f;            // seconds to reach "far away" (tweak)
     float tAnim = gUfoAnim.time;
     if (tAnim < 0.f) tAnim = 0.f;
 
-    // Normalised [0,1]
-    float u = tAnim / totalTime;
+    float u = tAnim / totalTime;       // 0..1
     if (u > 1.f) u = 1.f;
 
-    // Ease-in (accelerating): s = u^2
-    float s = u * u;
+    // Ease-in: start slow, then accelerate
+    float s = u * u;                   // s is our curve parameter
 
-    // Define a curved path with four control points
+    // --- 2) Define a curved path with 4 control points ---
     Vec3f P0 = ufoStartPos;
-    Vec3f P1 = ufoStartPos + Vec3f{ 0.f,   3.f,   0.f };
-    Vec3f P2 = ufoStartPos + Vec3f{ 0.f,  15.f, -20.f };
-    Vec3f P3 = ufoStartPos + Vec3f{ 0.f,  40.f, -80.f };
+    Vec3f P1 = ufoStartPos + Vec3f{ 0.f,   3.f,   0.f };   // up
+    Vec3f P2 = ufoStartPos + Vec3f{ 0.f,  15.f, -20.f };   // up & away
+    Vec3f P3 = ufoStartPos + Vec3f{ 0.f,  40.f, -80.f };   // far away
 
-    // Current position along the curve
+    // Current position
     ufoPos = bezier3(P0, P1, P2, P3, s);
 
-    // Approximate direction by looking slightly ahead on the same curve
+    // --- 3) Approximate velocity / direction of movement in 3D ---
     float eps = 0.01f;
     float s2  = s + eps;
     if (s2 > 1.f) s2 = 1.f;
 
     Vec3f ufoPosAhead = bezier3(P0, P1, P2, P3, s2);
-    Vec3f vel = ufoPosAhead - ufoPos;
+    Vec3f vel = ufoPosAhead - ufoPos;  // velocity-like vector
 
-    // Horizontal direction for yaw (keep rocket upright)
-    Vec3f velXZ{ vel.x, 0.f, vel.z };
-    float lenXZ = length(velXZ);
-    if (lenXZ > 1e-3f)
+    float speed = length(vel);
+    if (speed > 1e-4f)
     {
-        velXZ = velXZ / lenXZ;
-        // Our camera forward uses (sin(yaw), 0, -cos(yaw))
-        // -> invert to get yaw from direction:
-        ufoYaw = std::atan2(velXZ.x, -velXZ.z);
+        // forward = direction of motion (normalised)
+        forwardWS = vel / speed;
+
+        // Choose a world-up that is not parallel to forward
+        Vec3f worldUp{ 0.f, 1.f, 0.f };
+
+        // dot(forwardWS, worldUp) == forwardWS.y here, so avoid calling dot()
+        if (std::fabs(forwardWS.y) > 0.99f)
+        {
+            worldUp = Vec3f{ 1.f, 0.f, 0.f };
+        }
+
+        // Right-hand basis:
+        // right  = worldUp x forward
+        // up     = forward x right
+        rightWS = normalize(cross(worldUp, forwardWS));
+        upWS    = cross(forwardWS, rightWS);
+    }
+    else
+    {
+        // Very slow -> keep default upright orientation
+        forwardWS = Vec3f{ 0.f, 1.f, 0.f };
+        rightWS   = Vec3f{ 1.f, 0.f, 0.f };
+        upWS      = Vec3f{ 0.f, 0.f, 1.f };
     }
 }
 else
 {
-    // If animation is not active (before F or after R),
-    // keep rocket at start position, with some default orientation if you like
-    ufoPos = ufoStartPos;
-    ufoYaw = 0.25f * std::numbers::pi_v<float>; // 45 deg, optional
+    // Not active (before F or after R): parked on pad, pointing up
+    ufoPos    = ufoStartPos;
+    forwardWS = Vec3f{ 0.f, 1.f, 0.f };
+    rightWS   = Vec3f{ 1.f, 0.f, 0.f };
+    upWS      = Vec3f{ 0.f, 0.f, 1.f };
 }
 
-// Build model matrix: T * R * S
+// --- 4) Build rotation matrix from basis vectors ---
+// Mat44f is row-major; we want the LOCAL axes mapped as:
+//   local X -> rightWS
+//   local Y -> forwardWS  (rocket nose)
+//   local Z -> upWS
+Mat44f ufoRot = kIdentity44f;
+
+// Column 0 = right
+ufoRot[0,0] = rightWS.x;
+ufoRot[1,0] = rightWS.y;
+ufoRot[2,0] = rightWS.z;
+
+// Column 1 = forward (nose direction)
+ufoRot[0,1] = forwardWS.x;
+ufoRot[1,1] = forwardWS.y;
+ufoRot[2,1] = forwardWS.z;
+
+// Column 2 = up
+ufoRot[0,2] = upWS.x;
+ufoRot[1,2] = upWS.y;
+ufoRot[2,2] = upWS.z;
+
+// --- 5) Build full model matrix: T * R * S ---
 Mat44f ufoModel =
     make_translation(ufoPos) *
-    make_rotation_y(ufoYaw) *
+    ufoRot *
     make_scaling(0.5f, 0.5f, 0.5f);
 
 // MVP
 Mat44f ufoMvp = viewProj * ufoModel;
 
-//Task1.5 end
+//Task1.5 end / combined with 1.7
 
 // Base speed and modifiers
 float baseSpeed = 5.0f;  // tweak this to taste (units per second)
