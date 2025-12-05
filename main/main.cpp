@@ -658,13 +658,18 @@ Mat44f terrainMvp = viewProj * model;
 // UFO model: above landing pad A (Pad A = landingPadPos1)
 Vec3f ufoPos = Vec3f{
     landingPadPos1.x,
-    landingPadPos1.y + 0.5f,   // 2 units above the pad
+    landingPadPos1.y + 1.25f,   // slightly above the pad
     landingPadPos1.z
 };
 
+// simple constant yaw (e.g. 45 degrees)
+float ufoYaw = 0.25f * std::numbers::pi_v<float>; // 45° in radians
+
 Mat44f ufoModel =
     make_translation(ufoPos) *
+    make_rotation_y(ufoYaw) *
     make_scaling(0.5f, 0.5f, 0.5f);
+
 // UFO MVP
 Mat44f ufoMvp = viewProj * ufoModel;
 
