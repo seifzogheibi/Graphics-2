@@ -68,6 +68,17 @@ namespace
 		double lastMouseY = 0.0;
 	};
 
+	// ===== 1.8: camera modes =====
+		enum class CameraMode
+		{
+			Free = 0,   // WASD + mouse
+			Chase = 1,  // fixed distance behind/above rocket
+			Ground = 2  // fixed point on ground, always looks at rocket
+		};
+
+		Camera gCamera;
+		CameraMode gCameraMode = CameraMode::Free;
+
 	// 1.7
 	struct VehicleAnim
 	{
@@ -76,7 +87,6 @@ namespace
 		float time = 0.f;      // seconds since animation start
 	};
 
-	Camera gCamera;// 1.5?
 	VehicleAnim gUfoAnim;
 
 	// Simple cubic Bézier in 3D
@@ -661,203 +671,248 @@ Vec3f landingPadPos2{ 8.f, -.7f, 40.f };
 
 // Update state
 
-// 0) Time step (seconds)
-static double lastTime = glfwGetTime();
-double currentTime = glfwGetTime();
-float dt = static_cast<float>(currentTime - lastTime);
-lastTime = currentTime;
+        // ========================
+        // Update state (time, UFO, camera)
+        // ========================
 
-// Update UFO animation time (task1.7)
-if (gUfoAnim.active && !gUfoAnim.paused)
-{
-    gUfoAnim.time += dt;
-}
+        // 0) Time step (seconds)
+        static double lastTime = glfwGetTime();
+        double currentTime = glfwGetTime();
+        float dt = static_cast<float>(currentTime - lastTime);
+        lastTime = currentTime;
 
-
-// 1) Aspect ratio and projection matrix (depends on framebuffer size)
-float aspect     = fbwidth / fbheight;
-float fovRadians = 60.0f * std::numbers::pi_v<float> / 180.0f;
-float zNear      = 0.1f;
-float zFar       = 250.0f;
-
-Mat44f proj =
-    make_perspective_projection(fovRadians, aspect, zNear, zFar) *
-    make_rotation_x(-gCamera.pitch) *
-    make_rotation_y(gCamera.yaw) *
-    make_translation(-gCamera.position);
-
-// Treat proj as viewProj = P * V
-Mat44f viewProj = proj;
-
-// Terrain model is identity, so MVP_terrain = viewProj * model
-Mat44f terrainMvp = viewProj * model;
-
-// === Task 1.7: Animated UFO transform (position + orientation) ===
-
-// Start position (above landing pad A)
-Vec3f ufoStartPos{
-    landingPadPos1.x,
-    landingPadPos1.y + 1.25f,   // slightly above the pad
-    landingPadPos1.z
-};
-
-// Default: rocket parked on pad, pointing up
-Vec3f ufoPos = ufoStartPos;
-
-// Local rocket "forward" (nose) in model space is +Y
-// We'll compute a world-space forward vector later.
-Vec3f forwardWS{ 0.f, 1.f, 0.f };
-Vec3f rightWS  { 1.f, 0.f, 0.f };
-Vec3f upWS     { 0.f, 0.f, 1.f };
-
-// Only animate if active
-if (gUfoAnim.active)
-{
-    // --- 1) Parametric time along the path with ease-in ---
-
-    float totalTime = 8.0f;            // seconds to reach "far away" (tweak)
-    float tAnim = gUfoAnim.time;
-    if (tAnim < 0.f) tAnim = 0.f;
-
-    float u = tAnim / totalTime;       // 0..1
-    if (u > 1.f) u = 1.f;
-
-    // Ease-in: start slow, then accelerate
-    float s = u * u;                   // s is our curve parameter
-
-    // --- 2) Define a curved path with 4 control points ---
-    Vec3f P0 = ufoStartPos;
-    Vec3f P1 = ufoStartPos + Vec3f{ 0.f,   3.f,   0.f };   // up
-    Vec3f P2 = ufoStartPos + Vec3f{ 0.f,  15.f, -20.f };   // up & away
-    Vec3f P3 = ufoStartPos + Vec3f{ 0.f,  40.f, -80.f };   // far away
-
-    // Current position
-    ufoPos = bezier3(P0, P1, P2, P3, s);
-
-    // --- 3) Approximate velocity / direction of movement in 3D ---
-    float eps = 0.01f;
-    float s2  = s + eps;
-    if (s2 > 1.f) s2 = 1.f;
-
-    Vec3f ufoPosAhead = bezier3(P0, P1, P2, P3, s2);
-    Vec3f vel = ufoPosAhead - ufoPos;  // velocity-like vector
-
-    float speed = length(vel);
-    if (speed > 1e-4f)
-    {
-        // forward = direction of motion (normalised)
-        forwardWS = vel / speed;
-
-        // Choose a world-up that is not parallel to forward
-        Vec3f worldUp{ 0.f, 1.f, 0.f };
-
-        // dot(forwardWS, worldUp) == forwardWS.y here, so avoid calling dot()
-        if (std::fabs(forwardWS.y) > 0.99f)
+        // Update UFO animation time (task 1.7)
+        if (gUfoAnim.active && !gUfoAnim.paused)
         {
-            worldUp = Vec3f{ 1.f, 0.f, 0.f };
+            gUfoAnim.time += dt;
         }
 
-        // Right-hand basis:
-        // right  = worldUp x forward
-        // up     = forward x right
-        rightWS = normalize(cross(worldUp, forwardWS));
-        upWS    = cross(forwardWS, rightWS);
-    }
-    else
-    {
-        // Very slow -> keep default upright orientation
-        forwardWS = Vec3f{ 0.f, 1.f, 0.f };
-        rightWS   = Vec3f{ 1.f, 0.f, 0.f };
-        upWS      = Vec3f{ 0.f, 0.f, 1.f };
-    }
-}
-else
-{
-    // Not active (before F or after R): parked on pad, pointing up
-    ufoPos    = ufoStartPos;
-    forwardWS = Vec3f{ 0.f, 1.f, 0.f };
-    rightWS   = Vec3f{ 1.f, 0.f, 0.f };
-    upWS      = Vec3f{ 0.f, 0.f, 1.f };
-}
+        // 1) Aspect ratio and projection matrix (depends on framebuffer size)
+        float aspect     = fbwidth / fbheight;
+        float fovRadians = 60.0f * std::numbers::pi_v<float> / 180.0f;
+        float zNear      = 0.1f;
+        float zFar       = 250.0f;
 
-// --- 4) Build rotation matrix from basis vectors ---
-// Mat44f is row-major; we want the LOCAL axes mapped as:
-//   local X -> rightWS
-//   local Y -> forwardWS  (rocket nose)
-//   local Z -> upWS
-Mat44f ufoRot = kIdentity44f;
+        // Pure projection matrix (no view yet)
+        Mat44f projMat = make_perspective_projection(fovRadians, aspect, zNear, zFar);
 
-// Column 0 = right
-ufoRot[0,0] = rightWS.x;
-ufoRot[1,0] = rightWS.y;
-ufoRot[2,0] = rightWS.z;
+        // ========================
+        // 2) UFO animation (position + orientation) – Task 1.7
+        // ========================
 
-// Column 1 = forward (nose direction)
-ufoRot[0,1] = forwardWS.x;
-ufoRot[1,1] = forwardWS.y;
-ufoRot[2,1] = forwardWS.z;
+        // Start position (above landing pad A)
+        Vec3f ufoStartPos{
+            landingPadPos1.x,
+            landingPadPos1.y + 0.5f,
+            landingPadPos1.z
+        };
 
-// Column 2 = up
-ufoRot[0,2] = upWS.x;
-ufoRot[1,2] = upWS.y;
-ufoRot[2,2] = upWS.z;
+        // Defaults (parked, pointing up)
+        Vec3f ufoPos     = ufoStartPos;
+        Vec3f forwardWS{ 0.f, 1.f, 0.f };   // rocket nose
+        Vec3f rightWS  { 1.f, 0.f, 0.f };
+        Vec3f upWS     { 0.f, 0.f, 1.f };
 
-// --- 5) Build full model matrix: T * R * S ---
-Mat44f ufoModel =
-    make_translation(ufoPos) *
-    ufoRot *
-    make_scaling(0.5f, 0.5f, 0.5f);
+        if (gUfoAnim.active)
+        {
+            float totalTime = 8.0f;  // seconds to reach "space" (tweak)
+            float tAnim = gUfoAnim.time;
+            if (tAnim < 0.f) tAnim = 0.f;
 
-// MVP
-Mat44f ufoMvp = viewProj * ufoModel;
+            float u = tAnim / totalTime;   // 0..1
+            if (u > 1.f) u = 1.f;
 
-//Task1.5 end / combined with 1.7
+            // Ease-in: start slow, then accelerate
+            float s = u * u;
 
-// Base speed and modifiers
-float baseSpeed = 5.0f;  // tweak this to taste (units per second)
-if (gCamera.fast)
-	baseSpeed *= 4.0f;      // Shift
-if (gCamera.slow)
-	baseSpeed *= 0.25f;     // Ctrl
+            // Bézier control points
+            Vec3f P0 = ufoStartPos;
+            Vec3f P1 = ufoStartPos + Vec3f{ 0.f,   3.f,   0.f };
+            Vec3f P2 = ufoStartPos + Vec3f{ 0.f,  15.f, -20.f };
+            Vec3f P3 = ufoStartPos + Vec3f{ 0.f,  40.f, -80.f };
 
-float moveStep = baseSpeed * dt;
+            // Current position
+            ufoPos = bezier3(P0, P1, P2, P3, s);
 
-// Movement implementation
-// Compute forward and right vectors from yaw and pitch
-Vec3f forward{
-	std::sin(gCamera.yaw) * std::cos(gCamera.pitch),
-	std::sin(gCamera.pitch),
-	-std::cos(gCamera.yaw) * std::cos(gCamera.pitch)
-};
-forward = normalize(forward);
+            // Approximate direction of motion
+            float eps = 0.01f;
+            float s2  = s + eps;
+            if (s2 > 1.f) s2 = 1.f;
 
-Vec3f right{
-	std::cos(gCamera.yaw),
-	0.0f,
-	std::sin(gCamera.yaw)
-};
-right = normalize(right);
+            Vec3f ufoPosAhead = bezier3(P0, P1, P2, P3, s2);
+            Vec3f vel = ufoPosAhead - ufoPos;
+            float speed = length(vel);
 
-Vec3f up{ 0.0f, 1.0f, 0.0f };
+            if (speed > 1e-4f)
+            {
+                forwardWS = vel / speed;       // direction of movement
 
-// Apply movement based on pressed keys
-if (gCamera.moveForward)
-	gCamera.position = gCamera.position + forward * moveStep;
-if (gCamera.moveBackward)
-	gCamera.position = gCamera.position - forward * moveStep;
-if (gCamera.moveRight)
-	gCamera.position = gCamera.position + right * moveStep;
-if (gCamera.moveLeft)
-	gCamera.position = gCamera.position - right * moveStep;
-if (gCamera.moveUp)
-	gCamera.position = gCamera.position + up * moveStep;
-if (gCamera.moveDown)
-	gCamera.position = gCamera.position - up * moveStep;
+                Vec3f worldUp{ 0.f, 1.f, 0.f };
+                if (std::fabs(dot(forwardWS, worldUp)) > 0.99f)
+                {
+                    worldUp = Vec3f{ 1.f, 0.f, 0.f };
+                }
 
-std::print( "Camera position: ({:.2f}, {:.2f}, {:.2f})\n", gCamera.position.x, gCamera.position.y, gCamera.position.z );
+                // Right-handed basis
+                rightWS = normalize(cross(worldUp, forwardWS));
+                upWS    = cross(forwardWS, rightWS);
+            }
+        }
+        else
+        {
+            // Not active: parked
+            ufoPos    = ufoStartPos;
+            forwardWS = Vec3f{ 0.f, 1.f, 0.f };
+            rightWS   = Vec3f{ 1.f, 0.f, 0.f };
+            upWS      = Vec3f{ 0.f, 0.f, 1.f };
+        }
 
-// 4) Build view matrix from camera position + orientation
-Mat33f normalMatrix = mat44_to_mat33( transpose(invert(model)) );
+        // Build rotation matrix from basis vectors:
+        // local X -> rightWS, local Y -> forwardWS, local Z -> upWS
+        Mat44f ufoRot = kIdentity44f;
+
+        // Column 0 = right
+        ufoRot[0,0] = rightWS.x;
+        ufoRot[1,0] = rightWS.y;
+        ufoRot[2,0] = rightWS.z;
+
+        // Column 1 = forward (nose)
+        ufoRot[0,1] = forwardWS.x;
+        ufoRot[1,1] = forwardWS.y;
+        ufoRot[2,1] = forwardWS.z;
+
+        // Column 2 = up
+        ufoRot[0,2] = upWS.x;
+        ufoRot[1,2] = upWS.y;
+        ufoRot[2,2] = upWS.z;
+
+        // Full UFO model (position + orientation + scale)
+        Mat44f ufoModel =
+            make_translation(ufoPos) *
+            ufoRot *
+            make_scaling(0.5f, 0.5f, 0.5f);
+
+        // ========================
+        // 3) Camera movement (free mode) – same as before
+        // ========================
+
+        // Base speed and modifiers
+        float baseSpeed = 5.0f;  // tweak to taste
+        if (gCamera.fast)
+            baseSpeed *= 4.0f;      // Shift
+        if (gCamera.slow)
+            baseSpeed *= 0.25f;     // Ctrl
+
+        float moveStep = baseSpeed * dt;
+
+        // Compute forward and right vectors from yaw and pitch
+        Vec3f camForward{
+            std::sin(gCamera.yaw) * std::cos(gCamera.pitch),
+            std::sin(gCamera.pitch),
+            -std::cos(gCamera.yaw) * std::cos(gCamera.pitch)
+        };
+        camForward = normalize(camForward);
+
+        Vec3f camRight{
+            std::cos(gCamera.yaw),
+            0.0f,
+            std::sin(gCamera.yaw)
+        };
+        camRight = normalize(camRight);
+
+        Vec3f camUp{ 0.0f, 1.0f, 0.0f };
+
+        // Only really meaningful in Free mode, but we always update gCamera
+        if (gCamera.moveForward)
+            gCamera.position = gCamera.position + camForward * moveStep;
+        if (gCamera.moveBackward)
+            gCamera.position = gCamera.position - camForward * moveStep;
+        if (gCamera.moveRight)
+            gCamera.position = gCamera.position + camRight * moveStep;
+        if (gCamera.moveLeft)
+            gCamera.position = gCamera.position - camRight * moveStep;
+        if (gCamera.moveUp)
+            gCamera.position = gCamera.position + camUp * moveStep;
+        if (gCamera.moveDown)
+            gCamera.position = gCamera.position - camUp * moveStep;
+
+        std::print(
+            "Camera position: ({:.2f}, {:.2f}, {:.2f})\n",
+            gCamera.position.x, gCamera.position.y, gCamera.position.z
+        );
+
+        // ========================
+        // 4) Build VIEW matrix based on camera mode – Task 1.8
+        // ========================
+
+        Mat44f view;
+
+        switch (gCameraMode)
+        {
+        case CameraMode::Free:
+        {
+            // Your original free camera
+            view =
+                make_rotation_x(-gCamera.pitch) *
+                make_rotation_y(gCamera.yaw) *
+                make_translation(-gCamera.position);
+            break;
+        }
+        case CameraMode::Chase:
+        {
+            // Camera sits behind and above the rocket
+            float distBack = 8.0f;   // distance behind
+            float heightUp = 3.0f;   // height above
+
+            Vec3f camPos    = ufoPos - forwardWS * distBack + upWS * heightUp;
+            Vec3f camTarget = ufoPos + forwardWS * 1.0f; // look slightly ahead
+            Vec3f dir       = normalize(camTarget - camPos);
+
+            float camPitch = std::asin(dir.y);
+            float camYaw   = std::atan2(dir.x, -dir.z);
+
+            view =
+                make_rotation_x(-camPitch) *
+                make_rotation_y(camYaw) *
+                make_translation(-camPos);
+            break;
+        }
+        case CameraMode::Ground:
+        {
+            // Fixed point on ground that always looks at the rocket
+            Vec3f camPos{
+                landingPadPos1.x + 25.f,
+                landingPadPos1.y + 5.f,
+                landingPadPos1.z + 25.f
+            };
+
+            Vec3f camTarget = ufoPos;
+            Vec3f dir       = normalize(camTarget - camPos);
+
+            float camPitch = std::asin(dir.y);
+            float camYaw   = std::atan2(dir.x, -dir.z);
+
+            view =
+                make_rotation_x(-camPitch) *
+                make_rotation_y(camYaw) *
+                make_translation(-camPos);
+            break;
+        }
+        }
+
+        // ========================
+        // 5) Combine projection + view
+        // ========================
+        Mat44f viewProj = projMat * view;
+
+        // Terrain model is identity, so MVP_terrain = viewProj * model
+        Mat44f terrainMvp = viewProj * model;
+
+        // UFO MVP
+        Mat44f ufoMvp = viewProj * ufoModel;
+
+        // 6) Normal matrix (still fine with model = identity)
+        Mat33f normalMatrix = mat44_to_mat33( transpose(invert(model)) );
 
 		// Draw scene
 		OGL_CHECKPOINT_DEBUG();
@@ -957,13 +1012,13 @@ glBindVertexArray(0);
 
 		// First landing pad
 		Mat44f lpModel1 = make_translation(landingPadPos1);
-		Mat44f lpMvp1   = proj * lpModel1;  // proj already includes camera transform
+		Mat44f lpMvp1   = viewProj * lpModel1;  // proj already includes camera transform
 		glUniformMatrix4fv(lpLocProj, 1, GL_TRUE, lpMvp1.v);
 		glDrawArrays(GL_TRIANGLES, 0, landingMesh.vertexCount);
 
 		// Second landing pad
 		Mat44f lpModel2 = make_translation(landingPadPos2);
-		Mat44f lpMvp2   = proj * lpModel2;
+		Mat44f lpMvp2   = viewProj * lpModel2;
 		glUniformMatrix4fv(lpLocProj, 1, GL_TRUE, lpMvp2.v);
 		glDrawArrays(GL_TRIANGLES, 0, landingMesh.vertexCount);
 
@@ -1075,6 +1130,24 @@ namespace
         gUfoAnim.active = false;
         gUfoAnim.paused = false;
         gUfoAnim.time   = 0.f;
+    }
+
+
+	    // --- Task 1.8: cycle camera mode with C ---
+    if (aKey == GLFW_KEY_C && aAction == GLFW_PRESS)
+    {
+        if (gCameraMode == CameraMode::Free)
+        {
+            gCameraMode = CameraMode::Chase;
+        }
+        else if (gCameraMode == CameraMode::Chase)
+        {
+            gCameraMode = CameraMode::Ground;
+        }
+        else
+        {
+            gCameraMode = CameraMode::Free;
+        }
     }
 
 	}
