@@ -20,13 +20,14 @@
 
 #include "defaults.hpp"
 #include "ufo.hpp" // added this basel
+#include "loadobj.hpp"
 
 #include <rapidobj/rapidobj.hpp>
 #include "../vmlib/vec2.hpp"
 #include "../vmlib/vec3.hpp"
 #include <vector>
 
-
+#define ASSETS "assets/cw2/"
 
 namespace
 {
@@ -46,14 +47,13 @@ namespace
 		GLFWwindow* window;
 	};
 
-		struct Camera
-	{
-		Vec3f position{ 0.f, 0.f, 0.f };
-		float yaw   = 0.0f;   // radians, left-right
-		float pitch = 0.0f;   // radians, up-down
-
-		bool moveForward = false;
-		bool moveBackward = false;
+	struct Camera
+{
+	Vec3f position{ 0.f, 5.f, 0.f };  // Start above the terrain
+	float yaw   = 0.0f;   // radians, left-right
+	float pitch = 0.0f;   // radians, up-down
+	bool moveForward = false;	
+	bool moveBackward = false;
 		bool moveLeft = false;
 		bool moveRight = false;
 		bool moveUp = false;
@@ -109,10 +109,20 @@ namespace
 			(t2 * t)        * D;
 	}
 
+	
+	struct PointLight
+	{
+		Vec3f position;
+		Vec3f color;
+		bool enabled = true;
+	};
+
+	PointLight gPointLights[3];
+    bool gDirectionalLightEnabled = true;
 
 	// Forward declarations for extra callbacks
-	void glfw_callback_mouse_button_( GLFWwindow* window, int button, int action, int mods );
-	void glfw_callback_cursor_pos_( GLFWwindow* window, double xpos, double ypos );
+	void glfw_callback_mouse_button_( GLFWwindow* , int , int , int); // remove vars?
+	void glfw_callback_cursor_pos_( GLFWwindow* , double, double); //remove vars?
 
 }
 
@@ -251,119 +261,9 @@ struct MeshGLColored
 		GLsizei vertexCount = 0;
 	};
 
-	// === Load Parlahti mesh with rapidobj ===
-	MeshGL terrainMesh;
+	SimpleMeshData terrainMeshData = load_wavefront_obj("assets/cw2/parlahti.obj");
+	GLuint terrainVAO = create_vao(terrainMeshData);
 
-    // 1) Parse the OBJ file
-    rapidobj::Result objResult = rapidobj::ParseFile("assets/cw2/parlahti.obj");
-    
-	// Check for errors
-    if (objResult.error)
-    {
-        throw Error("Fail", objResult.error.code.message());
-    }
-
-    // Ensure we have triangles
-    rapidobj::Triangulate(objResult);
-
-    // Shortcuts
-    auto const& attrib = objResult.attributes;
-    auto const& shapes = objResult.shapes;
-
-
-	// 2) Flatten mesh into per-vertex arrays (no indexing, simpler)
-	std::vector<Vec3f> positions;
-	std::vector<Vec3f> normals;
-	std::vector<Vec2f> texcoords;
-
-	for (auto const& shape : shapes)
-	{
-		auto const& mesh = shape.mesh;
-
-		for (auto const& idx : mesh.indices)
-		{
-			// --- Position ---
-			Vec3f pos{0.f, 0.f, 0.f};
-			if (idx.position_index >= 0)
-			{
-				std::size_t pi = static_cast<std::size_t>(idx.position_index) * 3;
-				pos[0] = attrib.positions[pi + 0];
-				pos[1] = attrib.positions[pi + 1];
-				pos[2] = attrib.positions[pi + 2];
-			}
-			positions.push_back(pos);
-
-			// --- Normal ---
-			Vec3f nrm{0.f, 1.f, 0.f}; // default up if no normal
-			if (idx.normal_index >= 0)
-			{
-				std::size_t ni = static_cast<std::size_t>(idx.normal_index) * 3;
-				nrm[0] = attrib.normals[ni + 0];
-				nrm[1] = attrib.normals[ni + 1];
-				nrm[2] = attrib.normals[ni + 2];
-			}
-			normals.push_back(nrm);
-
-			// --- Texcoord (UV) ---
-			Vec2f uv{0.f, 0.f};
-			if (idx.texcoord_index >= 0)
-			{
-				std::size_t ti = static_cast<std::size_t>(idx.texcoord_index) * 2;
-				uv = Vec2f{
-					attrib.texcoords[ti + 0],
-					attrib.texcoords[ti + 1]
-				};
-			}
-			texcoords.push_back(uv);
-		}
-	}
-
-	// === Create VAO for terrain ===
-	glGenVertexArrays(1, &terrainMesh.vao);
-	glBindVertexArray(terrainMesh.vao);
-
-
-    // Store vertex count for drawing
-    terrainMesh.vertexCount = static_cast<GLsizei>(positions.size());
-
-
-    // --- Positions VBO (location = 0) ---
-    glGenBuffers(1, &terrainMesh.vboPositions);
-    glBindBuffer(GL_ARRAY_BUFFER, terrainMesh.vboPositions);
-    glBufferData(
-        GL_ARRAY_BUFFER,
-        positions.size() * sizeof(Vec3f),
-        positions.data(),
-        GL_STATIC_DRAW
-    );
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(
-        0,                  // layout(location = 0)
-        3,                  // x, y, z
-        GL_FLOAT,
-        GL_FALSE,
-        sizeof(Vec3f),
-        (void*)0
-    );
-
-    // --- Normals VBO (location = 1) ---
-    glGenBuffers(1, &terrainMesh.vboNormals);
-    glBindBuffer(GL_ARRAY_BUFFER, terrainMesh.vboNormals);
-    glBufferData(
-        GL_ARRAY_BUFFER,
-        normals.size() * sizeof(Vec3f),
-        normals.data(),
-        GL_STATIC_DRAW
-    );
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(
-        1,                  // layout(location = 1)
-        3,                  // nx, ny, nz
-        GL_FLOAT,
-        GL_FALSE,
-        sizeof(Vec3f),
-        (void*)0
-    );
 
 
     ShaderProgram terrainProgram({
@@ -403,29 +303,6 @@ struct MeshGLColored
 
 
 
-	// --- Texcoords VBO (location = 3) ---
-	glGenBuffers(1, &terrainMesh.vboTexcoords);
-	glBindBuffer(GL_ARRAY_BUFFER, terrainMesh.vboTexcoords);
-	glBufferData(
-		GL_ARRAY_BUFFER,
-		texcoords.size() * sizeof(Vec2f),
-		texcoords.data(),
-		GL_STATIC_DRAW
-	);
-	glEnableVertexAttribArray(3);
-	glVertexAttribPointer(
-		3,                  // layout(location = 3)
-		2,                  // u, v
-		GL_FLOAT,
-		GL_FALSE,
-		sizeof(Vec2f),
-		(void*)0
-	);
-
-
-	// Unbind VAO & VBOs (good practice)
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-	glBindVertexArray(0);
 
 	// Create VAO/VBO for UFO (same pattern as terrain)
     glGenVertexArrays(1, &ufoMesh.vao);
@@ -466,168 +343,45 @@ struct MeshGLColored
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
 
-	GLuint terrainTexture = load_texture_2d("assets/cw2/L4343A-4k.jpeg");
+	GLuint terrainTexture = load_texture_2d( (ASSETS + terrainMeshData.texture_filepath).c_str() );
 
 ShaderProgram landingProgram({
     { GL_VERTEX_SHADER,   "assets/cw2/landing.vert" },
     { GL_FRAGMENT_SHADER, "assets/cw2/landing.frag" }
 });
 
-	// === Static camera + transforms + light ===
+// === Static camera + transforms + light ===
 
 // We’ll build view each frame, but we can store these
 
 // Landing pad positions (you will tweak these by flying around to put them in the sea)
-Vec3f landingPadPos1{ 1.f, -.7f, -20.f };
-Vec3f landingPadPos2{ 8.f, -.7f, 40.f }; 
+Vec3f landingPadPos1{ 1.f, -.96f, -20.f };
+Vec3f landingPadPos2{ 8.f, -.96f, 40.f };
 
 
 
 	// === Load Landing Pad mesh (coloured, per material) ===
 
-	MeshGLColored landingMesh;
+	SimpleMeshData landingMeshData = load_wavefront_obj("assets/cw2/landingpad.obj");
+	GLuint landingVao = create_vao(landingMeshData);
 
-	rapidobj::Result lpResult = rapidobj::ParseFile("assets/cw2/landingpad.obj");
-	if (lpResult.error)
-	{
-		throw Error("Failed to load landingpad.obj: {}", lpResult.error.code.message());
-	}
+	// === Setup point lights (world space) ===
+	// These are approximate positions near your space vehicle – you can tweak later.
 
-	rapidobj::Triangulate(lpResult);
+	gPointLights[0].position = Vec3f{  0.f, 15.f,   0.f };  // e.g. top centre
+	gPointLights[0].color    = Vec3f{  1.f,  0.f,   0.f };  // red
 
-	auto const& lpAttrib    = lpResult.attributes;
-	auto const& lpShapes    = lpResult.shapes;
-	auto const& lpMaterials = lpResult.materials;
+	gPointLights[1].position = Vec3f{  5.f, 14.f,  -3.f };  // side
+	gPointLights[1].color    = Vec3f{  0.f,  1.f,   0.f };  // green
 
-	std::vector<Vec3f> lpPositions;
-	std::vector<Vec3f> lpNormals;
-	std::vector<Vec3f> lpColors;
+	gPointLights[2].position = Vec3f{ -4.f, 16.f,   2.f };  // other side
+	gPointLights[2].color    = Vec3f{  0.f,  0.7f,  1.f };  // blue-ish
 
-	for (auto const& shape : lpShapes)
-	{
-		auto const& mesh = shape.mesh;
+	gPointLights[0].enabled = true;
+	gPointLights[1].enabled = true;
+	gPointLights[2].enabled = true;
 
-		// Each 3 indices (after Triangulate) correspond to 1 triangle = 1 face
-		for (std::size_t idx_i = 0; idx_i < mesh.indices.size(); ++idx_i)
-		{
-			auto const& idx = mesh.indices[idx_i];
-
-			// --- Position ---
-			Vec3f pos{ 0.f, 0.f, 0.f };
-			if (idx.position_index >= 0)
-			{
-				std::size_t pi = static_cast<std::size_t>(idx.position_index) * 3;
-				pos = Vec3f{
-					lpAttrib.positions[pi + 0],
-					lpAttrib.positions[pi + 1],
-					lpAttrib.positions[pi + 2]
-				};
-			}
-			lpPositions.push_back(pos);
-
-			// --- Normal ---
-			Vec3f nrm{ 0.f, 1.f, 0.f };
-			if (idx.normal_index >= 0)
-			{
-				std::size_t ni = static_cast<std::size_t>(idx.normal_index) * 3;
-				nrm = Vec3f{
-					lpAttrib.normals[ni + 0],
-					lpAttrib.normals[ni + 1],
-					lpAttrib.normals[ni + 2]
-				};
-			}
-			lpNormals.push_back(nrm);
-
-			// --- Colour from material diffuse (Kd) ---
-			// Figure out which face we are on and thus which material
-			std::size_t faceIndex = idx_i / 3; // 3 indices per triangle
-			int matId = -1;
-			if (!mesh.material_ids.empty() && faceIndex < mesh.material_ids.size())
-				matId = mesh.material_ids[faceIndex];
-
-			Vec3f col{ 1.f, 1.f, 1.f }; // default white if something's off
-			if (matId >= 0 && static_cast<std::size_t>(matId) < lpMaterials.size())
-			{
-				auto const& mat = lpMaterials[matId];
-				col = Vec3f{
-					mat.diffuse[0],
-					mat.diffuse[1],
-					mat.diffuse[2]
-				};
-			}
-			lpColors.push_back(col);
-		}
-	}
-
-	landingMesh.vertexCount = static_cast<GLsizei>(lpPositions.size());
-
-	
-	
-	// === Create VAO + VBOs for landing pad ===
-
-	glGenVertexArrays(1, &landingMesh.vao);
-	glBindVertexArray(landingMesh.vao);
-
-	// Positions at location = 0
-	glGenBuffers(1, &landingMesh.vboPositions);
-	glBindBuffer(GL_ARRAY_BUFFER, landingMesh.vboPositions);
-	glBufferData(
-		GL_ARRAY_BUFFER,
-		lpPositions.size() * sizeof(Vec3f),
-		lpPositions.data(),
-		GL_STATIC_DRAW
-	);
-	glEnableVertexAttribArray(0);
-	glVertexAttribPointer(
-		0,
-		3,
-		GL_FLOAT,
-		GL_FALSE,
-		sizeof(Vec3f),
-		(void*)0
-	);
-
-	// Normals at location = 1
-	glGenBuffers(1, &landingMesh.vboNormals);
-	glBindBuffer(GL_ARRAY_BUFFER, landingMesh.vboNormals);
-	glBufferData(
-		GL_ARRAY_BUFFER,
-		lpNormals.size() * sizeof(Vec3f),
-		lpNormals.data(),
-		GL_STATIC_DRAW
-	);
-	glEnableVertexAttribArray(1);
-	glVertexAttribPointer(
-		1,
-		3,
-		GL_FLOAT,
-		GL_FALSE,
-		sizeof(Vec3f),
-		(void*)0
-	);
-
-	// Colours at location = 3  (same location index you used for terrain texcoords,
-	// but in a DIFFERENT VAO, so that's fine)
-	glGenBuffers(1, &landingMesh.vboColors);
-	glBindBuffer(GL_ARRAY_BUFFER, landingMesh.vboColors);
-	glBufferData(
-		GL_ARRAY_BUFFER,
-		lpColors.size() * sizeof(Vec3f),
-		lpColors.data(),
-		GL_STATIC_DRAW
-	);
-	glEnableVertexAttribArray(3);
-	glVertexAttribPointer(
-		3,
-		3,          // r, g, b
-		GL_FLOAT,
-		GL_FALSE,
-		sizeof(Vec3f),
-		(void*)0
-	);
-
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-	glBindVertexArray(0);
+	gDirectionalLightEnabled = true;
 
 
 
@@ -694,7 +448,7 @@ Vec3f landingPadPos2{ 8.f, -.7f, 40.f };
         float zFar       = 250.0f;
 
         // Pure projection matrix (no view yet)
-        Mat44f projMat = make_perspective_projection(fovRadians, aspect, zNear, zFar);
+        Mat44f projMat = make_perspective_projection(fovRadians, aspect, zNear, zFar); ///////////////////////////////////////////////////////////////////
 
         // ========================
         // 2) UFO animation (position + orientation) – Task 1.7
@@ -927,43 +681,67 @@ glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 GLuint progId = terrainProgram.programId();
 glUseProgram(progId);
 
+
+
 // Look up uniforms once per frame
-GLint locProj         = glGetUniformLocation(progId, "uProj");
 
 // lighting
-GLint locLightDir     = glGetUniformLocation(progId, "uLightDir");
-GLint locBaseColor    = glGetUniformLocation(progId, "uBaseColor");
-GLint locAmbientColor = glGetUniformLocation(progId, "uAmbientColor");
 
 // Lighting uniforms (same for both objects)
-glUniform3fv(locLightDir,     1, &lightDir[0]);
-glUniform3fv(locAmbientColor, 1, &ambientColor[0]);
+glUniform3fv(2, 1, &lightDir[0]);
+glUniform3fv(4, 1, &ambientColor[0]);
 
 // Normal matrix (still fine for both; only uniform scaling)
 glUniformMatrix3fv(
-    2, // matches layout(location = 2) uniform mat3 uNormalMatrix;
+    1, // matches layout(location = 1) uniform mat3 uNormalMatrix;
     1, GL_TRUE, normalMatrix.v
 );
+
+// Camera position (location = 6)
+glUniform3fv(6, 1, &gCamera.position.x);
+
+// Point lights (locations 7-9, 10-12, 13-15)
+Vec3f pointLightPositions[3] = {
+    gPointLights[0].position,
+    gPointLights[1].position,
+    gPointLights[2].position
+};
+Vec3f pointLightColors[3] = {
+    gPointLights[0].color,
+    gPointLights[1].color,
+    gPointLights[2].color
+};
+GLint pointLightEnabled[3] = {
+    gPointLights[0].enabled ? 1 : 0,
+    gPointLights[1].enabled ? 1 : 0,
+    gPointLights[2].enabled ? 1 : 0
+};
+
+glUniform3fv(7, 3, &pointLightPositions[0].x);   // locations 7, 8, 9
+glUniform3fv(10, 3, &pointLightColors[0].x);     // locations 10, 11, 12
+glUniform1iv(13, 3, pointLightEnabled);          // locations 13, 14, 15
+
+// Directional light enabled (location = 16)
+glUniform1i(16, gDirectionalLightEnabled ? 1 : 0);
 
 // ====================
 // Draw TERRAIN
 // ====================
-glUniformMatrix4fv(locProj, 1, GL_TRUE, terrainMvp.v);
+glUniformMatrix4fv(0, 1, GL_TRUE, terrainMvp.v);
 
 // Terrain colour from your 1.3 work
-glUniform3fv(locBaseColor, 1, &baseColor[0]);
+glUniform3fv(3, 1, &baseColor[0]);
 
 
 // texture
 glActiveTexture(GL_TEXTURE0);
 glBindTexture(GL_TEXTURE_2D, terrainTexture);
-GLint locTexture = glGetUniformLocation(progId, "uTexture");
-glUniform1i(locTexture, 0);
+glUniform1i(5, 0);
 
 // draw terrain
 
-glBindVertexArray(terrainMesh.vao);
-glDrawArrays(GL_TRIANGLES, 0, terrainMesh.vertexCount);
+glBindVertexArray(terrainVAO);
+glDrawArrays(GL_TRIANGLES, 0, terrainMeshData.positions.size());
 glBindVertexArray(0);
 
 // ====================
@@ -977,12 +755,12 @@ Vec3f domeColor  { 0.3f,  0.55f, 0.95f };  // light blue dome+antenna
 glBindVertexArray(ufoMesh.vao);
 
 // 1) Base saucer (grey) : vertices [0, ufoBaseVertexCount)
-glUniform3fv(locBaseColor, 1, &saucerColor[0]);
-glUniformMatrix4fv(locProj, 1, GL_TRUE, ufoMvp.v);
+glUniform3fv(3, 1, &saucerColor[0]);
+glUniformMatrix4fv(0, 1, GL_TRUE, ufoMvp.v);
 glDrawArrays(GL_TRIANGLES, 0, ufoBaseVertexCount);
 
 // 2) Top dome + antenna (light blue) : vertices [ufoBaseVertexCount, ufoBaseVertexCount + ufoTopVertexCount)
-glUniform3fv(locBaseColor, 1, &domeColor[0]);
+glUniform3fv(3, 1, &domeColor[0]);
 glDrawArrays(GL_TRIANGLES, ufoBaseVertexCount, ufoTopVertexCount);
 
 glBindVertexArray(0);
@@ -995,34 +773,28 @@ glBindVertexArray(0);
 
 		// Normal matrix (location = 2 in the vertex shader)
 		glUniformMatrix3fv(
-			2,
+			1,
 			1, GL_TRUE, normalMatrix.v
 		);
 
 		// Lighting uniforms
-		GLint lpLocLightDir     = glGetUniformLocation(landingProgId, "uLightDir");
-		GLint lpLocAmbientColor = glGetUniformLocation(landingProgId, "uAmbientColor");
-		glUniform3fv(lpLocLightDir,     1, &lightDir[0]);
-		glUniform3fv(lpLocAmbientColor, 1, &ambientColor[0]);
+		glUniform3fv(2,     1, &lightDir[0]);
+		glUniform3fv(4, 1, &ambientColor[0]);
 
 		// MVP uniform location
-		GLint lpLocProj = glGetUniformLocation(landingProgId, "uProj");
+	glBindVertexArray(landingVao);
 
-		glBindVertexArray(landingMesh.vao);
+	// First landing pad
+	Mat44f lpModel1 = make_translation(landingPadPos1);
+	Mat44f lpMvp1   = proj * lpModel1;  // Use viewProj (same as terrain)
+	glUniformMatrix4fv(0, 1, GL_TRUE, lpMvp1.v);
+	glDrawArrays(GL_TRIANGLES, 0, landingMeshData.positions.size());
 
-		// First landing pad
-		Mat44f lpModel1 = make_translation(landingPadPos1);
-		Mat44f lpMvp1   = viewProj * lpModel1;  // proj already includes camera transform
-		glUniformMatrix4fv(lpLocProj, 1, GL_TRUE, lpMvp1.v);
-		glDrawArrays(GL_TRIANGLES, 0, landingMesh.vertexCount);
-
-		// Second landing pad
-		Mat44f lpModel2 = make_translation(landingPadPos2);
-		Mat44f lpMvp2   = viewProj * lpModel2;
-		glUniformMatrix4fv(lpLocProj, 1, GL_TRUE, lpMvp2.v);
-		glDrawArrays(GL_TRIANGLES, 0, landingMesh.vertexCount);
-
-		glBindVertexArray(0);
+	// Second landing pad
+	Mat44f lpModel2 = make_translation(landingPadPos2);
+	Mat44f lpMvp2   = proj * lpModel2;
+	glUniformMatrix4fv(0, 1, GL_TRUE, lpMvp2.v);
+	glDrawArrays(GL_TRIANGLES, 0, landingMeshData.positions.size());		glBindVertexArray(0);
 
 
 		OGL_CHECKPOINT_DEBUG();
@@ -1055,22 +827,17 @@ namespace
 
 	void glfw_callback_key_( GLFWwindow* aWindow, int aKey, int, int aAction, int )
 	{
-		// if( GLFW_KEY_ESCAPE == aKey && GLFW_PRESS == aAction )
-		// {
-		// 	glfwSetWindowShouldClose( aWindow, GLFW_TRUE );
-		// 	return;
-		// }
 
 	bool pressed  = (aAction == GLFW_PRESS);
-	// bool released = (aAction == GLFW_RELEASE);
 
+	//SWAP aKey with GLFW ------------------
 	if (aKey == GLFW_KEY_ESCAPE && pressed)
 	{
 		glfwSetWindowShouldClose( aWindow, GLFW_TRUE );
 		return;
 	}
 
-	// Movement keys
+	// Movement keys //SWAP aKey with GLFW ------------------
 	if (aKey == GLFW_KEY_W)
 	{
 		gCamera.moveForward = pressed || (aAction == GLFW_REPEAT);
@@ -1095,6 +862,30 @@ namespace
 	{
 		gCamera.moveDown = pressed || (aAction == GLFW_REPEAT);
 	}
+
+	// Light toggles: 1–3 toggle point lights, 4 toggles directional light //TASK 1.6 MAKE SURE CONSISTENT WITH UP
+	if (aAction == GLFW_PRESS)
+	{
+		if (aKey == GLFW_KEY_1)
+		{
+			gPointLights[0].enabled = !gPointLights[0].enabled;
+		}
+		else if (aKey == GLFW_KEY_2)
+		{
+			gPointLights[1].enabled = !gPointLights[1].enabled;
+		}
+		else if (aKey == GLFW_KEY_3)
+		{
+			gPointLights[2].enabled = !gPointLights[2].enabled;
+		}
+		else if (aKey == GLFW_KEY_4)
+		{
+			gDirectionalLightEnabled = !gDirectionalLightEnabled;
+		}
+	}
+
+
+
 
 	// Speed modifiers
 	if (aKey == GLFW_KEY_LEFT_SHIFT || aKey == GLFW_KEY_RIGHT_SHIFT)

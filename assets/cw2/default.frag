@@ -2,27 +2,26 @@
 
 in vec3 vNormal;
 in vec2 vTexCoord;
+in vec3 vPosition;
 
-uniform vec3 uLightDir;      // direction FROM surface TOWARDS light or vice versa; we’ll be consistent in C++
-uniform vec3 uBaseColor;
-uniform vec3 uAmbientColor;
-uniform sampler2D uTexture;
+// existing ones
+layout (location = 2) uniform vec3 uLightDir;
+layout (location = 3) uniform vec3 uBaseColor;
+layout (location = 4) uniform vec3 uAmbientColor;
+layout (location = 5) uniform sampler2D uTexture;
+
+// NEW – fixed locations
+layout (location = 6) uniform vec3 uCameraPos;
+layout (location = 7) uniform vec3 uPointLightPos[3];
+layout (location = 10) uniform vec3 uPointLightColor[3];
+layout (location = 13) uniform int  uPointLightEnabled[3];
+layout (location = 16) uniform int  uDirectionalEnabled;
 
 out vec4 oColor;
 
 void main()
 {
-    vec3 N = normalize(vNormal);
-    vec3 L = normalize(uLightDir);
-
-    float NdotL = max(dot(N, L), 0.0);
-
+    // First just check the texture again
     vec3 texColor = texture(uTexture, vTexCoord).rgb;
-
-    vec3 diffuse = NdotL * uBaseColor * texColor;
-    vec3 ambient = uAmbientColor * texColor;
-
-    vec3 color = ambient + diffuse;
-
-    oColor = vec4(color, 1.0);
+    oColor = vec4(texColor, 1.0);
 }
