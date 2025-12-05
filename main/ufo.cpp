@@ -1,3 +1,5 @@
+// ufo.cpp  (SKELETON – you MUST edit / complete the TODOs yourself)
+
 #include "ufo.hpp"
 
 #include <vector>
@@ -6,379 +8,342 @@
 
 #include "../vmlib/vec3.hpp"
 
-// We build a saucer with:
-//  - bulged side band
-//  - domed top
-//  - domed bottom
-// All as non-indexed triangles: 3 vertices per triangle in outPositions/outNormals.
-
 namespace
 {
-    // Push a single triangle with a constant normal
-    void pushTriangleFlat(std::vector<Vec3f>& positions,
-                          std::vector<Vec3f>& normals,
-                          Vec3f const& p0,
-                          Vec3f const& p1,
-                          Vec3f const& p2,
-                          Vec3f n)
+    // ----------------------------------------------------------------
+    // Helper: push one flat-shaded triangle
+    // ----------------------------------------------------------------
+    void pushTriangleFlat(
+        std::vector<Vec3f>& positions,
+        std::vector<Vec3f>& normals,
+        Vec3f const& p0,
+        Vec3f const& p1,
+        Vec3f const& p2,
+        Vec3f normal )
     {
-        // make sure normal is unit length
-        n = normalize(n);
+    // Make sure the normal is unit length
+    normal = normalize(normal);
 
-        positions.push_back(p0);
-        positions.push_back(p1);
-        positions.push_back(p2);
+    // Push the three vertices
+    positions.push_back(p0);
+    positions.push_back(p1);
+    positions.push_back(p2);
 
-        normals.push_back(n);
-        normals.push_back(n);
-        normals.push_back(n);
+    // Flat shading: same normal for all three
+    normals.push_back(normal);
+    normals.push_back(normal);
+    normals.push_back(normal);
     }
-}
 
-void buildUfoFlatArrays(std::vector<Vec3f>& outPositions,
-                        std::vector<Vec3f>& outNormals,
-                        int& outBaseVertexCount,
-                        int& outTopVertexCount)
-{
-    outPositions.clear();
-    outNormals.clear();
-    
-    int   const segments    = 48;
-    // --- Shape parameters you can tweak ---
-    float const radiusBody       = 2.0f;   // base radius of the saucer body
-    float const bulgeExtra       = 0.7f;   // extra radius at mid-height
-    float const halfBodyHeight   = 0.25f;  // half thickness of the mid-band
-
-    float const topCapHeight     = 0.8f;   // height of top dome
-    float const bottomCapHeight  = 0.6f;   // height of bottom dome (often smaller)
-
-    int   const segmentsTheta    = 64;     // around Y
-    int   const segmentsSideY    = 4;      // vertical slices in side band
-    int   const segmentsCapY     = 6;      // vertical slices in each dome
-
-    float const twoPi = 2.0f * std::numbers::pi_v<float>;
-
-    // radius of side band as a function of vertical parameter t in [-1,1]
-    auto radiusSideAtT = [&](float t) {
-        // t = -1 -> bottom of band  , t = 0 -> middle , t = 1 -> top of band
-        // make it bulge in the middle using (1 - t^2)
-        float base  = radiusBody;
-        float bulge = bulgeExtra * (1.0f - t * t);
-        return base + bulge;
-    };
-
-    // ----------------------------------------------------
-    // 1) Bulged SIDE BAND (between y = -halfBodyHeight and +halfBodyHeight)
-    // ----------------------------------------------------
-    for (int j = 0; j < segmentsSideY; ++j)
+    // ----------------------------------------------------------------
+    // Cylinder: y from y0 to y1, radius in XZ, centred on Y axis
+    // ----------------------------------------------------------------
+    void addCylinder(
+        std::vector<Vec3f>& positions,
+        std::vector<Vec3f>& normals,
+        int slices,
+        float radius,
+        float y0,
+        float y1 )
     {
-        float v0 = float(j)     / float(segmentsSideY);
-        float v1 = float(j + 1) / float(segmentsSideY);
+        float const twoPi = 2.0f * std::numbers::pi_v<float>;
 
-        // y coordinates
-        float y0 = -halfBodyHeight + 2.0f * halfBodyHeight * v0;
-        float y1 = -halfBodyHeight + 2.0f * halfBodyHeight * v1;
-
-        // map to t in [-1,1]
-        float t0 = -1.0f + 2.0f * v0;
-        float t1 = -1.0f + 2.0f * v1;
-
-        float r0 = radiusSideAtT(t0);
-        float r1 = radiusSideAtT(t1);
-
-        // approximate vertical slope for normals
-        float dy   = y1 - y0;
-        float dr   = (r1 - r0);
-        float slope = (std::fabs(dr) > 1e-4f) ? (dy / dr) : 0.0f;
-
-        for (int i = 0; i < segmentsTheta; ++i)
+        // Side
+        for (int i = 0; i < slices; ++i)
         {
-            float a0 = twoPi * (float(i)     / float(segmentsTheta));
-            float a1 = twoPi * (float(i + 1) / float(segmentsTheta));
+            float a0 = twoPi * float(i) / float(slices);
+            float a1 = twoPi * float(i + 1) / float(slices);
 
-            float c0 = std::cos(a0);
-            float s0 = std::sin(a0);
-            float c1 = std::cos(a1);
-            float s1 = std::sin(a1);
+            float c0 = std::cos(a0), s0 = std::sin(a0);
+            float c1 = std::cos(a1), s1 = std::sin(a1);
 
-            Vec3f p00{ r0 * c0, y0, r0 * s0 }; // bottom-left
-            Vec3f p01{ r0 * c1, y0, r0 * s1 }; // bottom-right
-            Vec3f p10{ r1 * c0, y1, r1 * s0 }; // top-left
-            Vec3f p11{ r1 * c1, y1, r1 * s1 }; // top-right
+            Vec3f p00{ radius * c0, y0, radius * s0 };
+            Vec3f p01{ radius * c1, y0, radius * s1 };
+            Vec3f p10{ radius * c0, y1, radius * s0 };
+            Vec3f p11{ radius * c1, y1, radius * s1 };
 
-            // radial + small vertical component for smooth-ish shading
-            Vec3f n0{ c0, slope, s0 };
-            Vec3f n1{ c1, slope, s1 };
+            Vec3f n0{ c0, 0.0f, s0 };
+            Vec3f n1{ c1, 0.0f, s1 };
             Vec3f nAvg{
                 0.5f * (n0.x + n1.x),
                 0.5f * (n0.y + n1.y),
                 0.5f * (n0.z + n1.z)
             };
 
-            // two triangles forming a quad
-            pushTriangleFlat(outPositions, outNormals, p00, p10, p11, nAvg);
-            pushTriangleFlat(outPositions, outNormals, p00, p11, p01, nAvg);
-        }
-    }
-
-    // ----------------------------------------------------
-    // 2) TOP DOME (from y = +halfBodyHeight upwards)
-    // ----------------------------------------------------
-    {
-        float const baseY   = +halfBodyHeight;
-        float const tipY    = baseY + topCapHeight;
-
-        // precompute rings (y,r)
-        std::vector<float> ringY(segmentsCapY + 1);
-        std::vector<float> ringR(segmentsCapY + 1);
-
-        for (int j = 0; j <= segmentsCapY; ++j)
-        {
-            float v = float(j) / float(segmentsCapY); // 0..1
-            ringY[j] = baseY + v * topCapHeight;
-
-            // radius shrinks towards tip with a smooth curve
-            float k  = v;
-            float shrink = 1.0f - 0.85f * k * k; // 1 at base, ~0.15 at tip
-            ringR[j] = radiusBody * shrink;
+            pushTriangleFlat(positions, normals, p00, p10, p11, nAvg);
+            pushTriangleFlat(positions, normals, p00, p11, p01, nAvg);
         }
 
-        // rings (except the last) -> quads
-        for (int j = 0; j < segmentsCapY; ++j)
+        // Bottom cap
         {
-            float y0 = ringY[j];
-            float y1 = ringY[j + 1];
-            float r0 = ringR[j];
-            float r1 = ringR[j + 1];
+            Vec3f center{ 0.0f, y0, 0.0f };
+            Vec3f n{ 0.0f, -1.0f, 0.0f };
 
-            float dy = y1 - y0;
-            float dr = (r1 - r0);
-            float slope = (std::fabs(dr) > 1e-4f) ? (dy / dr) : 0.0f;
-
-            for (int i = 0; i < segmentsTheta; ++i)
+            for (int i = 0; i < slices; ++i)
             {
-                float a0 = twoPi * (float(i)     / float(segmentsTheta));
-                float a1 = twoPi * (float(i + 1) / float(segmentsTheta));
+                float a0 = twoPi * float(i) / float(slices);
+                float a1 = twoPi * float(i + 1) / float(slices);
 
-                float c0 = std::cos(a0);
-                float s0 = std::sin(a0);
-                float c1 = std::cos(a1);
-                float s1 = std::sin(a1);
+                Vec3f p0{ radius * std::cos(a0), y0, radius * std::sin(a0) };
+                Vec3f p1{ radius * std::cos(a1), y0, radius * std::sin(a1) };
 
-                Vec3f p00{ r0 * c0, y0, r0 * s0 };
-                Vec3f p01{ r0 * c1, y0, r0 * s1 };
-                Vec3f p10{ r1 * c0, y1, r1 * s0 };
-                Vec3f p11{ r1 * c1, y1, r1 * s1 };
-
-                Vec3f n0{ c0, slope, s0 };
-                Vec3f n1{ c1, slope, s1 };
-                Vec3f nAvg{
-                    0.5f * (n0.x + n1.x),
-                    0.5f * (n0.y + n1.y),
-                    0.5f * (n0.z + n1.z)
-                };
-
-                pushTriangleFlat(outPositions, outNormals, p00, p10, p11, nAvg);
-                pushTriangleFlat(outPositions, outNormals, p00, p11, p01, nAvg);
+                pushTriangleFlat(positions, normals, center, p0, p1, n);
             }
         }
 
-        // Final “tip” – small cap to a point (optional but looks nice)
-        Vec3f tip{ 0.0f, tipY, 0.0f };
-        float  yRing = ringY.back();
-        float  rRing = ringR.back();
-
-        for (int i = 0; i < segmentsTheta; ++i)
+        // Top cap
         {
-            float a0 = twoPi * (float(i)     / float(segmentsTheta));
-            float a1 = twoPi * (float(i + 1) / float(segmentsTheta));
+            Vec3f center{ 0.0f, y1, 0.0f };
+            Vec3f n{ 0.0f, 1.0f, 0.0f };
 
-            float c0 = std::cos(a0);
-            float s0 = std::sin(a0);
-            float c1 = std::cos(a1);
-            float s1 = std::sin(a1);
-
-            Vec3f p0{ rRing * c0, yRing, rRing * s0 };
-            Vec3f p1{ rRing * c1, yRing, rRing * s1 };
-
-            // normal roughly halfway between up and radial
-            Vec3f n{
-                0.5f * (c0 + c1),
-                1.0f,
-                0.5f * (s0 + s1)
-            };
-
-            pushTriangleFlat(outPositions, outNormals, p0, p1, tip, n);
-        }
-    }
-
-    // ----------------------------------------------------
-    // 3) BOTTOM DOME (mirror of top, usually a bit smaller)
-    // ----------------------------------------------------
-    {
-        float const baseY   = -halfBodyHeight;
-        float const tipY    = baseY - bottomCapHeight;
-
-        std::vector<float> ringY(segmentsCapY + 1);
-        std::vector<float> ringR(segmentsCapY + 1);
-
-        for (int j = 0; j <= segmentsCapY; ++j)
-        {
-            float v = float(j) / float(segmentsCapY); // 0..1 from base downwards
-            ringY[j] = baseY - v * bottomCapHeight;
-
-            float k  = v;
-            float shrink = 1.0f - 0.9f * k * k;
-            ringR[j] = radiusBody * shrink;
-        }
-
-        for (int j = 0; j < segmentsCapY; ++j)
-        {
-            float y0 = ringY[j];
-            float y1 = ringY[j + 1];
-            float r0 = ringR[j];
-            float r1 = ringR[j + 1];
-
-            float dy = y1 - y0;
-            float dr = (r1 - r0);
-            float slope = (std::fabs(dr) > 1e-4f) ? (dy / dr) : 0.0f;
-
-            for (int i = 0; i < segmentsTheta; ++i)
+            for (int i = 0; i < slices; ++i)
             {
-                float a0 = twoPi * (float(i)     / float(segmentsTheta));
-                float a1 = twoPi * (float(i + 1) / float(segmentsTheta));
+                float a0 = twoPi * float(i) / float(slices);
+                float a1 = twoPi * float(i + 1) / float(slices);
 
-                float c0 = std::cos(a0);
-                float s0 = std::sin(a0);
-                float c1 = std::cos(a1);
-                float s1 = std::sin(a1);
+                Vec3f p0{ radius * std::cos(a0), y1, radius * std::sin(a0) };
+                Vec3f p1{ radius * std::cos(a1), y1, radius * std::sin(a1) };
 
-                Vec3f p00{ r0 * c0, y0, r0 * s0 };
-                Vec3f p01{ r0 * c1, y0, r0 * s1 };
-                Vec3f p10{ r1 * c0, y1, r1 * s0 };
-                Vec3f p11{ r1 * c1, y1, r1 * s1 };
-
-                Vec3f n0{ c0, slope, s0 };
-                Vec3f n1{ c1, slope, s1 };
-                Vec3f nAvg{
-                    0.5f * (n0.x + n1.x),
-                    0.5f * (n0.y + n1.y),
-                    0.5f * (n0.z + n1.z)
-                };
-
-                pushTriangleFlat(outPositions, outNormals, p10, p00, p01, nAvg);
-                pushTriangleFlat(outPositions, outNormals, p10, p01, p11, nAvg);
+                pushTriangleFlat(positions, normals, center, p1, p0, n);
             }
         }
+    }
 
-        // Tip fan
-        Vec3f tip{ 0.0f, tipY, 0.0f };
-        float  yRing = ringY.back();
-        float  rRing = ringR.back();
+    // ----------------------------------------------------------------
+    // Cone: base at yBase (radius > 0), tip at yTip on Y axis
+    // ----------------------------------------------------------------
+    void addCone(
+        std::vector<Vec3f>& positions,
+        std::vector<Vec3f>& normals,
+        int slices,
+        float baseRadius,
+        float yBase,
+        float yTip )
+    {
+        float const twoPi = 2.0f * std::numbers::pi_v<float>;
+        Vec3f tip{ 0.0f, yTip, 0.0f };
 
-        for (int i = 0; i < segmentsTheta; ++i)
+        // Side
+        for (int i = 0; i < slices; ++i)
         {
-            float a0 = twoPi * (float(i)     / float(segmentsTheta));
-            float a1 = twoPi * (float(i + 1) / float(segmentsTheta));
+            float a0 = twoPi * float(i) / float(slices);
+            float a1 = twoPi * float(i + 1) / float(slices);
 
-            float c0 = std::cos(a0);
-            float s0 = std::sin(a0);
-            float c1 = std::cos(a1);
-            float s1 = std::sin(a1);
-
-            Vec3f p0{ rRing * c0, yRing, rRing * s0 };
-            Vec3f p1{ rRing * c1, yRing, rRing * s1 };
-
-            Vec3f n{
-                0.5f * (c0 + c1),
-               -1.0f,
-                0.5f * (s0 + s1)
+            Vec3f p0{
+                baseRadius * std::cos(a0), yBase,
+                baseRadius * std::sin(a0)
+            };
+            Vec3f p1{
+                baseRadius * std::cos(a1), yBase,
+                baseRadius * std::sin(a1)
             };
 
-            pushTriangleFlat(outPositions, outNormals, p1, p0, tip, n);
+            Vec3f e1 = p1 - p0;
+            Vec3f e2 = tip - p0;
+            Vec3f n  = cross(e2, e1);  // TODO: this uses your Vec3f::cross
+
+            pushTriangleFlat(positions, normals, p0, tip, p1, n);
+        }
+
+        // Base disc
+        Vec3f center{ 0.0f, yBase, 0.0f };
+        Vec3f nb{ 0.0f, -1.0f, 0.0f };
+
+        for (int i = 0; i < slices; ++i)
+        {
+            float a0 = twoPi * float(i) / float(slices);
+            float a1 = twoPi * float(i + 1) / float(slices);
+
+            Vec3f p0{
+                baseRadius * std::cos(a0), yBase,
+                baseRadius * std::sin(a0)
+            };
+            Vec3f p1{
+                baseRadius * std::cos(a1), yBase,
+                baseRadius * std::sin(a1)
+            };
+
+            pushTriangleFlat(positions, normals, center, p0, p1, nb);
         }
     }
-    // === mark how many vertices belong to the base saucer ===
-    outBaseVertexCount = static_cast<int>(outPositions.size());
 
-    // ========================================================
-    //  EXTRA: top cap (closing the hole) + antenna
-    //  These vertices will be drawn with a different colour.
-    // ========================================================
-
-    // --- Top cap (small disc on top) ---
-    float const capRadius = 0.7f;               // tweak if you want smaller/larger
-    float const capY = halfBodyHeight + topCapHeight + 0.02f;  // slightly above existing top
-    Vec3f const capCenter{ 0.0f, capY, 0.0f };
-    Vec3f const capNormal{ 0.0f, 1.0f, 0.0f };
-
-    for( int i = 0; i < segments; ++i )
+    // ----------------------------------------------------------------
+    // Axis-aligned box: centre c, half extents (hx, hy, hz)
+    // ----------------------------------------------------------------
+    void addBox(
+        std::vector<Vec3f>& positions,
+        std::vector<Vec3f>& normals,
+        Vec3f c,
+        float hx, float hy, float hz )
     {
-        float a0 = twoPi * (float(i)     / float(segments));
-        float a1 = twoPi * (float(i + 1) / float(segments));
+        // Compute 8 corners
+        Vec3f p000{ c.x - hx, c.y - hy, c.z - hz };
+        Vec3f p001{ c.x - hx, c.y - hy, c.z + hz };
+        Vec3f p010{ c.x - hx, c.y + hy, c.z - hz };
+        Vec3f p011{ c.x - hx, c.y + hy, c.z + hz };
+        Vec3f p100{ c.x + hx, c.y - hy, c.z - hz };
+        Vec3f p101{ c.x + hx, c.y - hy, c.z + hz };
+        Vec3f p110{ c.x + hx, c.y + hy, c.z - hz };
+        Vec3f p111{ c.x + hx, c.y + hy, c.z + hz };
 
-        Vec3f p0{
-            capRadius * std::cos(a0),
-            capY,
-            capRadius * std::sin(a0)
-        };
-        Vec3f p1{
-            capRadius * std::cos(a1),
-            capY,
-            capRadius * std::sin(a1)
-        };
+        // +X face
+        pushTriangleFlat(positions, normals, p100, p101, p111, Vec3f{ 1.0f, 0.0f, 0.0f });
+        pushTriangleFlat(positions, normals, p100, p111, p110, Vec3f{ 1.0f, 0.0f, 0.0f });
 
-        // Triangle fan: center -> p1 -> p0 (CCW from above)
-        pushTriangleFlat(outPositions, outNormals,
-                         capCenter, p1, p0,
-                         capNormal);
+        // -X face
+        pushTriangleFlat(positions, normals, p000, p010, p011, Vec3f{ -1.0f, 0.0f, 0.0f });
+        pushTriangleFlat(positions, normals, p000, p011, p001, Vec3f{ -1.0f, 0.0f, 0.0f });
+
+        // +Y face
+        pushTriangleFlat(positions, normals, p010, p110, p111, Vec3f{ 0.0f, 1.0f, 0.0f });
+        pushTriangleFlat(positions, normals, p010, p111, p011, Vec3f{ 0.0f, 1.0f, 0.0f });
+
+        // -Y face
+        pushTriangleFlat(positions, normals, p000, p001, p101, Vec3f{ 0.0f, -1.0f, 0.0f });
+        pushTriangleFlat(positions, normals, p000, p101, p100, Vec3f{ 0.0f, -1.0f, 0.0f });
+
+        // +Z face
+        pushTriangleFlat(positions, normals, p001, p011, p111, Vec3f{ 0.0f, 0.0f, 1.0f });
+        pushTriangleFlat(positions, normals, p001, p111, p101, Vec3f{ 0.0f, 0.0f, 1.0f });
+
+        // -Z face
+        pushTriangleFlat(positions, normals, p000, p100, p110, Vec3f{ 0.0f, 0.0f, -1.0f });
+        pushTriangleFlat(positions, normals, p000, p110, p010, Vec3f{ 0.0f, 0.0f, -1.0f });
     }
-
-    // --- Antenna (thin vertical cylinder) ---
-    float const antRadius   = 0.12f;              // thickness of antenna
-    float const antHeight   = 1.3f;               // how tall
-    float const antBottomY  = capY;
-    float const antTopY     = capY + antHeight;
-    int   const antSegments = 16;
-
-    for( int i = 0; i < antSegments; ++i )
-    {
-        float a0 = twoPi * (float(i)     / float(antSegments));
-        float a1 = twoPi * (float(i + 1) / float(antSegments));
-
-        float c0 = std::cos(a0);
-        float s0 = std::sin(a0);
-        float c1 = std::cos(a1);
-        float s1 = std::sin(a1);
-
-        Vec3f p0_bot{ antRadius * c0, antBottomY, antRadius * s0 };
-        Vec3f p0_top{ antRadius * c0, antTopY,    antRadius * s0 };
-        Vec3f p1_bot{ antRadius * c1, antBottomY, antRadius * s1 };
-        Vec3f p1_top{ antRadius * c1, antTopY,    antRadius * s1 };
-
-        Vec3f n0{ c0, 0.0f, s0 };
-        Vec3f n1{ c1, 0.0f, s1 };
-        Vec3f nAvg{
-            0.5f * (n0.x + n1.x),
-            0.0f,
-            0.5f * (n0.z + n1.z)
-        };
-
-        // Quad -> two triangles:
-        // Triangle 1: p0_top, p0_bot, p1_bot
-        pushTriangleFlat(outPositions, outNormals,
-                         p0_top, p0_bot, p1_bot,
-                         nAvg);
-
-        // Triangle 2: p0_top, p1_bot, p1_top
-        pushTriangleFlat(outPositions, outNormals,
-                         p0_top, p1_bot, p1_top,
-                         nAvg);
-    }
-
-    // Number of vertices we just added (cap + antenna)
-    outTopVertexCount = static_cast<int>(outPositions.size()) - outBaseVertexCount;
+} // anonymous namespace
 
 
-    // outPositions / outNormals now contain a fairly detailed flying saucer
+// ===================================================================
+// PUBLIC ENTRY POINT
+// ===================================================================
+void buildUfoFlatArrays(
+    std::vector<Vec3f>& outPositions,
+    std::vector<Vec3f>& outNormals,
+    int& outBaseVertexCount,
+    int& outTopVertexCount )
+{
+    outPositions.clear();
+    outNormals.clear();
+
+    // -------- rocket dimensions ----------
+    int   const slices       = 24;
+    float const bodyRadius   = 1.0f;
+    float const bodyHeight   = 4.0f;
+    float const engineHeight = 0.5f;
+    float const noseHeight   = 1.0f;
+    float const finHeight    = 1.0f;
+    float const finThickness = 0.2f;
+    float const finWidth     = 0.6f;
+
+    float const bodyBottomY  = -bodyHeight * 0.5f;
+    float const bodyTopY     =  bodyHeight * 0.5f;
+
+    // ---------------- BASE PARTS (grey) ----------------
+    std::size_t baseStart = outPositions.size();
+
+    // 1) main body
+    addCylinder(
+        outPositions, outNormals,
+        slices,
+        bodyRadius,
+        bodyBottomY,
+        bodyTopY
+    );
+
+    // 2) engine at bottom
+    float const engineRadius  = bodyRadius * 0.7f;
+    float const engineTopY    = bodyBottomY;
+    float const engineBottomY = engineTopY - engineHeight;
+
+    addCylinder(
+        outPositions, outNormals,
+        slices,
+        engineRadius,
+        engineBottomY,
+        engineTopY
+    );
+
+    // 3) four fins (boxes)
+    float const finCenterY = bodyBottomY + finHeight * 0.5f;
+    float const finOffset  = bodyRadius + finThickness * 0.5f;
+
+    // +X
+    addBox(
+        outPositions, outNormals,
+        Vec3f{ finOffset, finCenterY, 0.0f },
+        finThickness * 0.5f,
+        finHeight   * 0.5f,
+        finWidth    * 0.5f
+    );
+    // -X
+    addBox(
+        outPositions, outNormals,
+        Vec3f{ -finOffset, finCenterY, 0.0f },
+        finThickness * 0.5f,
+        finHeight   * 0.5f,
+        finWidth    * 0.5f
+    );
+    // +Z
+    addBox(
+        outPositions, outNormals,
+        Vec3f{ 0.0f, finCenterY, finOffset },
+        finWidth    * 0.5f,
+        finHeight   * 0.5f,
+        finThickness * 0.5f
+    );
+    // -Z
+    addBox(
+        outPositions, outNormals,
+        Vec3f{ 0.0f, finCenterY, -finOffset },
+        finWidth    * 0.5f,
+        finHeight   * 0.5f,
+        finThickness * 0.5f
+    );
+
+    // Mark base-vertex count
+    outBaseVertexCount = static_cast<int>(outPositions.size() - baseStart);
+
+    // ------------- TOP PARTS (blue glass / antenna) -------------
+    std::size_t topStart = outPositions.size();
+
+    // 4) nose cone, sitting on top of body
+    float const noseBaseY = bodyTopY;
+    float const noseTipY  = noseBaseY + noseHeight;
+
+    addCone(
+        outPositions, outNormals,
+        slices,
+        bodyRadius * 0.8f,
+        noseBaseY,
+        noseTipY
+    );
+
+    // 5) antenna cylinder above nose
+    float const antennaRadius = 0.1f;
+    float const antennaHeight = 0.8f;
+    float const antennaBaseY  = noseTipY;
+    float const antennaTopY   = antennaBaseY + antennaHeight;
+
+    addCylinder(
+        outPositions, outNormals,
+        slices,
+        antennaRadius,
+        antennaBaseY,
+        antennaTopY
+    );
+
+    // 6) tiny cone tip at very top
+    float const tipRadius = 0.15f;
+    float const tipBaseY  = antennaTopY;
+    float const tipTopY   = tipBaseY + 0.25f;
+
+    addCone(
+        outPositions, outNormals,
+        slices,
+        tipRadius,
+        tipBaseY,
+        tipTopY
+    );
+
+    outTopVertexCount = static_cast<int>(outPositions.size() - topStart);
 }
