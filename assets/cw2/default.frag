@@ -62,10 +62,11 @@ void main()
 
         vec3 Lvec = uPointLightPos[i] - vPosition;
         float dist = length(Lvec);
-        dist = 1.0;
-        vec3 L = Lvec / max(dist, 0.0001);
+        // distc = 1.0;
+        // vec3 L = Lvec / max(dist, 0.0001);
+        vec3 L = Lvec / dist;
 
-        float attenuation = 1.0 / max(dist * dist, 0.0001);
+        float attenuation = 1.0 / max(dist * dist, 1.0);
 
         float NdotL = max(dot(N, L), 0.0);
         if (NdotL <= 0.0)

@@ -315,7 +315,7 @@ ShaderProgram landingProgram({
 // We’ll build view each frame, but we can store these
 
 // Landing pad positions (you will tweak these by flying around to put them in the sea)
-Vec3f landingPadPos1{ 1.f, -.96f, -20.f };
+Vec3f landingPadPos1{ -11.50, -0.96, -54 };
 Vec3f landingPadPos2{ 8.f, -.96f, 40.f };
 
 
@@ -328,13 +328,13 @@ Vec3f landingPadPos2{ 8.f, -.96f, 40.f };
 	// === Setup point lights (world space) ===
 	// These are approximate positions near your space vehicle – you can tweak later.
 
-	gPointLights[0].position = Vec3f{  0.f, 5.f,   0.f };  // e.g. top centre
+	// gPointLights[0].position = Vec3f{  0.f, 5.f,   0.f };  // e.g. top centre
 	gPointLights[0].color    = Vec3f{  1.f,  0.f,   0.f };  // red
 
-	gPointLights[1].position = Vec3f{  5.f, 5.f,  -3.f };  // side
+	// gPointLights[1].position = Vec3f{  5.f, 5.f,  -3.f };  // side
 	gPointLights[1].color    = Vec3f{  0.f,  1.f,   0.f };  // green
 
-	gPointLights[2].position = Vec3f{ -4.f, 5.f,   2.f };  // other side
+	// gPointLights[2].position = Vec3f{ -4.f, 5.f,   2.f };  // other side
 	gPointLights[2].color    = Vec3f{  0.f,  0.7f,  1.f };  // blue-ish
 
 	gPointLights[0].enabled = true;
@@ -416,9 +416,21 @@ Vec3f ufoPos = Vec3f{
     landingPadPos1.z
 };
 
+// === Attach point lights to the rocket ===
+// These offsets are in world space relative to ufoPos.
+// Tweak them in-game by printing or just eyeballing.
+
+Vec3f lightOffset0{ 0.8f,  -0.8f,  -0.6f };   // near top / nose
+Vec3f lightOffset1{ 0.8f, -0.8f,  0.6f };   // around one fin
+Vec3f lightOffset2{-0.8f, -0.8f, -0.6f };   // around another fin
+
+gPointLights[0].position = ufoPos + lightOffset0;
+gPointLights[1].position = ufoPos + lightOffset1;
+gPointLights[2].position = ufoPos + lightOffset2;
+// === End attach point lights ===
+
 // simple constant yaw (e.g. 45 degrees)
 float ufoYaw = 0.25f * std::numbers::pi_v<float>; // 45° in radians
-
 Mat44f ufoModel =
     make_translation(ufoPos) *
     make_rotation_y(ufoYaw) *
@@ -579,29 +591,39 @@ glBindVertexArray(0);
 		GLuint landingProgId = landingProgram.programId();
 		glUseProgram(landingProgId);
 
-		// Normal matrix (location = 2 in the vertex shader)
+		// Normal matrix (location = 1 in the vertex shader)
 		glUniformMatrix3fv(
 			1,
 			1, GL_TRUE, normalMatrix.v
 		);
 
-		// Lighting uniforms
-		glUniform3fv(2,     1, &lightDir[0]);
+		// Lighting uniforms (same as terrain)
+		glUniform3fv(2, 1, &lightDir[0]);
 		glUniform3fv(4, 1, &ambientColor[0]);
+		
+		// Camera position (location = 6)
+		glUniform3fv(6, 1, &gCamera.position.x);
 
-		// MVP uniform location
+		// Point lights (locations 7-9, 10-12, 13-15)
+		glUniform3fv(7, 3, &pointLightPositions[0].x);   // locations 7, 8, 9
+		glUniform3fv(10, 3, &pointLightColors[0].x);     // locations 10, 11, 12
+		glUniform1iv(13, 3, pointLightEnabled);          // locations 13, 14, 15
+
+		// Directional light enabled (location = 16)
+		glUniform1i(16, gDirectionalLightEnabled ? 1 : 0);
+
 	glBindVertexArray(landingVao);
 
 	// First landing pad
 	Mat44f lpModel1 = make_translation(landingPadPos1);
-	Mat44f lpMvp1   = proj * lpModel1;  // Use viewProj (same as terrain)
-	glUniformMatrix4fv(0, 1, GL_TRUE, lpMvp1.v);
+	glUniformMatrix4fv(0, 1, GL_TRUE, proj.v);         // ViewProj at location 0 (NOT MVP)
+	glUniformMatrix4fv(17, 1, GL_TRUE, lpModel1.v);    // Model at location 17
 	glDrawArrays(GL_TRIANGLES, 0, landingMeshData.positions.size());
 
 	// Second landing pad
 	Mat44f lpModel2 = make_translation(landingPadPos2);
-	Mat44f lpMvp2   = proj * lpModel2;
-	glUniformMatrix4fv(0, 1, GL_TRUE, lpMvp2.v);
+	glUniformMatrix4fv(0, 1, GL_TRUE, proj.v);         // ViewProj at location 0 (NOT MVP)
+	glUniformMatrix4fv(17, 1, GL_TRUE, lpModel2.v);    // Model at location 17
 	glDrawArrays(GL_TRIANGLES, 0, landingMeshData.positions.size());		glBindVertexArray(0);
 
 
