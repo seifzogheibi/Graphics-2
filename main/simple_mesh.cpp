@@ -36,6 +36,10 @@ GLuint create_vao( SimpleMeshData const& aMeshData )
 	GLuint texcoordsVBO = 0;
 	GLuint colorsVBO = 0;
 	GLuint shininessVBO = 0;
+	GLuint KaVBO = 0;
+	GLuint KdVBO = 0;
+	GLuint KeVBO = 0;
+	GLuint KsVBO = 0;
 	
 	if ( aMeshData.has_texture() ){
 		glGenBuffers( 1, &texcoordsVBO );
@@ -63,6 +67,42 @@ GLuint create_vao( SimpleMeshData const& aMeshData )
 			GL_ARRAY_BUFFER,
 			aMeshData.shininess.size() * sizeof(float),
 			aMeshData.shininess.data(),
+			GL_STATIC_DRAW
+		);
+
+		glGenBuffers( 1, &KaVBO );
+		glBindBuffer( GL_ARRAY_BUFFER, KaVBO );
+		glBufferData(
+			GL_ARRAY_BUFFER,
+			aMeshData.Ka.size() * sizeof(Vec3f),
+			aMeshData.Ka.data(),
+			GL_STATIC_DRAW
+		);
+
+		glGenBuffers( 1, &KdVBO );
+		glBindBuffer( GL_ARRAY_BUFFER, KdVBO );
+		glBufferData(
+			GL_ARRAY_BUFFER,
+			aMeshData.Kd.size() * sizeof(Vec3f),
+			aMeshData.Kd.data(),
+			GL_STATIC_DRAW
+		);
+
+		glGenBuffers( 1, &KeVBO );
+		glBindBuffer( GL_ARRAY_BUFFER, KeVBO );
+		glBufferData(
+			GL_ARRAY_BUFFER,
+			aMeshData.Ke.size() * sizeof(Vec3f),
+			aMeshData.Ke.data(),
+			GL_STATIC_DRAW
+		);
+
+		glGenBuffers( 1, &KsVBO );
+		glBindBuffer( GL_ARRAY_BUFFER, KsVBO );
+		glBufferData(
+			GL_ARRAY_BUFFER,
+			aMeshData.Ks.size() * sizeof(Vec3f),
+			aMeshData.Ks.data(),
 			GL_STATIC_DRAW
 		);
 	}
@@ -119,6 +159,7 @@ GLuint create_vao( SimpleMeshData const& aMeshData )
 		);
 		glEnableVertexAttribArray( 3 );
 
+
 		glBindBuffer( GL_ARRAY_BUFFER, shininessVBO );
 		glVertexAttribPointer(
 			4,              // layout(location = 4) in vertex shader
@@ -129,21 +170,69 @@ GLuint create_vao( SimpleMeshData const& aMeshData )
 			(void*)0
 		);
 		glEnableVertexAttribArray( 4 );
+
+
+		glBindBuffer( GL_ARRAY_BUFFER, KaVBO );
+		glVertexAttribPointer(
+			5,              // layout(location = 5) in vertex shader
+			3,              // r, g, b
+			GL_FLOAT,
+			GL_FALSE,
+			0,
+			(void*)0
+		);
+		glEnableVertexAttribArray( 5 );	
+
+		glBindBuffer( GL_ARRAY_BUFFER, KdVBO );
+		glVertexAttribPointer(
+			6,              // layout(location = 6) in vertex shader
+			3,              // r, g, b
+			GL_FLOAT,
+			GL_FALSE,
+			0,
+			(void*)0
+		);
+		glEnableVertexAttribArray( 6 );
+
+		glBindBuffer( GL_ARRAY_BUFFER, KeVBO );
+		glVertexAttribPointer(
+			7,              // layout(location = 7) in vertex shader
+			3,              // r, g, b
+			GL_FLOAT,
+			GL_FALSE,
+			0,
+			(void*)0
+		);
+		glEnableVertexAttribArray( 7 );
+
+		glBindBuffer( GL_ARRAY_BUFFER, KsVBO );
+		glVertexAttribPointer(
+			8,              // layout(location = 8) in vertex shader
+			3,              // r, g, b
+			GL_FLOAT,
+			GL_FALSE,
+			0,
+			(void*)0
+		);
+		glEnableVertexAttribArray( 8 );
 	}
+
 	
 
 
 	glBindVertexArray( 0 );
-
-	// Unbind VBO (good practice)
 	glBindBuffer( GL_ARRAY_BUFFER, 0 );
+
 	// Discard vbos
 	glDeleteBuffers( 1, &positionsVBO );
 	glDeleteBuffers( 1, &normalsVBO );
 	glDeleteBuffers( 1, &texcoordsVBO );
 	glDeleteBuffers( 1, &colorsVBO );
 	glDeleteBuffers( 1, &shininessVBO );
-
+	glDeleteBuffers( 1, &KaVBO );
+	glDeleteBuffers( 1, &KdVBO );
+	glDeleteBuffers( 1, &KeVBO );
+	glDeleteBuffers( 1, &KsVBO );
 
 	return vao;
 }
