@@ -696,34 +696,69 @@ Mat44f ufoRot =
                 make_translation(-gCamera.position);
             break;
         }
-        case CameraMode::Chase:
-        {
-            // Camera sits behind and above the rocket
-            float distBack = 8.0f;   // distance behind
-            float heightUp = 3.0f;   // height above
+		case CameraMode::Chase:
+		{
+			Vec3f worldUp{ 0.f, 1.f, 0.f };
 
-            Vec3f camPos    = ufoPos - forwardWS * distBack + upWS * heightUp;
-            Vec3f camTarget = ufoPos + forwardWS * 1.0f; // look slightly ahead
-            Vec3f dir       = normalize(camTarget - camPos);
+			// 1) Start from rocket's forward
+			Vec3f f = forwardWS;
 
-            float camPitch = std::asin(dir.y);
-            float camYaw   = std::atan2(dir.x, -dir.z);
+			// If animation not active yet, use a stable forward along -Z
+			if (!gUfoAnim.active)
+			{
+				f = Vec3f{ 0.f, 0.f, -1.f };
+			}
+
+			// 2) Project onto XZ plane so camera movement ignores rocket's pitch
+			Vec3f fHoriz{ f.x, 0.f, f.z };
+			float len = length(fHoriz);
+			if (len < 1e-3f)
+			{
+				// fallback if it's nearly vertical
+				fHoriz = Vec3f{ 0.f, 0.f, -1.f };
+			}
+			else
+			{
+				fHoriz = fHoriz / len;
+			}
+
+			// 3) Camera offset settings (tweak these to taste)
+			float distBack   = 7.0f;  // how far behind the rocket
+			float heightUp   = 1.0f;   // height above
+			float sideOffset = -2.0f;   // to the side
+
+			Vec3f right = normalize(cross(worldUp, fHoriz));
+
+			// 4) Camera position: behind, above, slightly to the side
+			Vec3f camPos =
+				ufoPos
+				- fHoriz * distBack
+				+ worldUp * heightUp
+				+ right   * sideOffset;
+
+			// 5) Look a bit ahead of the rocket along horizontal forward
+			Vec3f camTarget = ufoPos + fHoriz * 2.0f;
+			Vec3f dir       = normalize(camTarget - camPos);
+
+			float camPitch = std::asin(dir.y);
+			float camYaw   = std::atan2(dir.x, -dir.z);
 
 			camPosForLighting = camPos;
 
-            view =
-                make_rotation_x(-camPitch) *
-                make_rotation_y(camYaw) *
-                make_translation(-camPos);
-            break;
-        }
+			view =
+				make_rotation_x(-camPitch) *
+				make_rotation_y(camYaw) *
+				make_translation(-camPos);
+			break;
+		}
+
         case CameraMode::Ground:
         {
             // Fixed point on ground that always looks at the rocket
             Vec3f camPos{
-                landingPadPos1.x + 25.f,
-                landingPadPos1.y + 5.f,
-                landingPadPos1.z + 25.f
+                landingPadPos1.x + 10.f,
+                landingPadPos1.y + 1.f,
+                landingPadPos1.z + 12.f
             };
 
             Vec3f camTarget = ufoPos;
@@ -750,11 +785,17 @@ Mat44f ufoRot =
         // Terrain model is identity, so MVP_terrain = viewProj * model
         Mat44f terrainMvp = viewProj * model;
 
-        // UFO MVP
-        Mat44f ufoMvp = viewProj * ufoModel;
+		// UFO MVP
+		Mat44f ufoMvp = viewProj * ufoModel;
 
-        // 6) Normal matrix (still fine with model = identity)
-        Mat33f normalMatrix = mat44_to_mat33( transpose(invert(model)) );
+		// 6) Normal matrices
+		// Terrain/landing pads use 'model' (identity -> no rotation/scale)
+		Mat33f terrainNormalMatrix = mat44_to_mat33( transpose(invert(model)) );
+
+		// Rocket uses its own model (includes rotation + scale)
+		Mat33f ufoNormalMatrix = mat44_to_mat33( transpose(invert(ufoModel)) );
+
+
 
 		// Draw scene
 		OGL_CHECKPOINT_DEBUG();
@@ -774,19 +815,21 @@ glUseProgram(progId);
 // Look up uniforms once per frame
 
 // lighting
+// view-projection matrix shared by terrain + rocket
+glUniformMatrix4fv(0, 1, GL_TRUE, viewProj.v);
 
 // Lighting uniforms (same for both objects)
 glUniform3fv(2, 1, &lightDir[0]);
 glUniform3fv(4, 1, &ambientColor[0]);
+// Camera position (location = 6)
+glUniform3fv(6, 1, &camPosForLighting.x);
 
 // Normal matrix (still fine for both; only uniform scaling)
 glUniformMatrix3fv(
-    1, // matches layout(location = 1) uniform mat3 uNormalMatrix;
-    1, GL_TRUE, normalMatrix.v
+    1, // layout(location = 1) uniform mat3 uNormalMatrix;
+    1, GL_TRUE, terrainNormalMatrix.v
 );
 
-// Camera position (location = 6)
-glUniform3fv(6, 1, &camPosForLighting.x);
 
 // Point lights (locations 7-9, 10-12, 13-15)
 Vec3f pointLightPositions[3] = {
@@ -839,9 +882,15 @@ glBindVertexArray(0);
 
 // Colours
 Vec3f saucerColor{ 0.3f, 0.55f, 0.95f };  // dark-ish grey base
-Vec3f domeColor  { 0.3f,  0.55f, 0.95f };  // light blue dome+antenna
+Vec3f domeColor  { 0.3f,  0.55f, 0.95f }; // light blue dome+antenna
 
 glBindVertexArray(ufoMesh.vao);
+
+// Use rocket's normal matrix
+glUniformMatrix3fv(
+    1,
+    1, GL_TRUE, ufoNormalMatrix.v
+);
 
 // 1) Base saucer (grey) : vertices [0, ufoBaseVertexCount)
 glUniform3fv(3, 1, &saucerColor[0]);
@@ -863,7 +912,7 @@ glBindVertexArray(0);
 		// Normal matrix (location = 1 in the vertex shader)
 		glUniformMatrix3fv(
 			1,
-			1, GL_TRUE, normalMatrix.v
+			1, GL_TRUE, terrainNormalMatrix.v
 		);
 
 		// Lighting uniforms (same as terrain)
@@ -880,6 +929,8 @@ glBindVertexArray(0);
 
 		// Directional light enabled (location = 16)
 		glUniform1i(16, gDirectionalLightEnabled ? 1 : 0);
+
+
 
 	glBindVertexArray(landingVao);
 
