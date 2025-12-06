@@ -447,8 +447,10 @@ Vec3f landingPadPos2{ 8.f, -.96f, 40.f };
         float zNear      = 0.1f;
         float zFar       = 250.0f;
 
-        // Pure projection matrix (no view yet)
-        Mat44f projMat = make_perspective_projection(fovRadians, aspect, zNear, zFar); ///////////////////////////////////////////////////////////////////
+
+		// Pure projection: no camera transforms here
+		Mat44f proj = make_perspective_projection(fovRadians, aspect, zNear, zFar);
+
 
         // ========================
         // 2) UFO animation (position + orientation) – Task 1.7
@@ -600,11 +602,15 @@ Vec3f landingPadPos2{ 8.f, -.96f, 40.f };
         // ========================
 
         Mat44f view;
+		Vec3f camPosForLighting = gCamera.position;   // default
 
         switch (gCameraMode)
         {
         case CameraMode::Free:
         {
+
+			camPosForLighting = gCamera.position;
+
             // Your original free camera
             view =
                 make_rotation_x(-gCamera.pitch) *
@@ -624,6 +630,8 @@ Vec3f landingPadPos2{ 8.f, -.96f, 40.f };
 
             float camPitch = std::asin(dir.y);
             float camYaw   = std::atan2(dir.x, -dir.z);
+
+			camPosForLighting = camPos;
 
             view =
                 make_rotation_x(-camPitch) *
@@ -646,6 +654,8 @@ Vec3f landingPadPos2{ 8.f, -.96f, 40.f };
             float camPitch = std::asin(dir.y);
             float camYaw   = std::atan2(dir.x, -dir.z);
 
+			camPosForLighting = camPos;
+
             view =
                 make_rotation_x(-camPitch) *
                 make_rotation_y(camYaw) *
@@ -657,7 +667,7 @@ Vec3f landingPadPos2{ 8.f, -.96f, 40.f };
         // ========================
         // 5) Combine projection + view
         // ========================
-        Mat44f viewProj = projMat * view;
+        Mat44f viewProj = proj * view;
 
         // Terrain model is identity, so MVP_terrain = viewProj * model
         Mat44f terrainMvp = viewProj * model;
@@ -698,7 +708,7 @@ glUniformMatrix3fv(
 );
 
 // Camera position (location = 6)
-glUniform3fv(6, 1, &gCamera.position.x);
+glUniform3fv(6, 1, &camPosForLighting.x);
 
 // Point lights (locations 7-9, 10-12, 13-15)
 Vec3f pointLightPositions[3] = {
@@ -786,15 +796,17 @@ glBindVertexArray(0);
 
 	// First landing pad
 	Mat44f lpModel1 = make_translation(landingPadPos1);
-	Mat44f lpMvp1   = proj * lpModel1;  // Use viewProj (same as terrain)
+	Mat44f lpMvp1   = viewProj * lpModel1;  // Use viewProj (same as terrain)
 	glUniformMatrix4fv(0, 1, GL_TRUE, lpMvp1.v);
 	glDrawArrays(GL_TRIANGLES, 0, landingMeshData.positions.size());
 
 	// Second landing pad
 	Mat44f lpModel2 = make_translation(landingPadPos2);
-	Mat44f lpMvp2   = proj * lpModel2;
+	Mat44f lpMvp2   = viewProj * lpModel2;
 	glUniformMatrix4fv(0, 1, GL_TRUE, lpMvp2.v);
-	glDrawArrays(GL_TRIANGLES, 0, landingMeshData.positions.size());		glBindVertexArray(0);
+	glDrawArrays(GL_TRIANGLES, 0, landingMeshData.positions.size());		
+	
+	glBindVertexArray(0);
 
 
 		OGL_CHECKPOINT_DEBUG();
