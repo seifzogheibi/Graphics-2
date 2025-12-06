@@ -9,7 +9,7 @@ in vec3 vKa;          // ambient   (Ka)
 in vec3 vKd;          // diffuse   (Kd)
 in vec3 vKe;          // emissive  (Ke)
 in vec3 vKs;          // specular  (Ks)
-in float vShininess;  // shininess (Ns)
+in float vNs;  // shininess (Ns)
 
 // keep same layout indices as terrain
 layout (location = 2)  uniform vec3 uLightDir;
@@ -35,7 +35,7 @@ void main()
     vec3 Ka = vKa;
     vec3 Kd = vKd;
     vec3 Ks = vKs;
-    float shininess = max(vShininess, 1.0);   // avoid zero / NaN
+    float Ns = max(vNs, 1.0);   // avoid zero / NaN
 
     // Softer ambient, small emissive
     vec3 color = 0.3 * Ka * uAmbientColor + 0.3 * vKe;
@@ -55,7 +55,7 @@ void main()
 
             // keep this fairly subtle – main show is point lights
             vec3 diffuse  = 0.4 * Kd * NdotL;
-            vec3 specular = 0.2 * Ks * pow(NdotH, shininess);
+            vec3 specular = 0.2 * Ks * pow(NdotH, Ns);
 
             color += diffuse + specular;
         }
@@ -88,7 +88,7 @@ void main()
 
         // more “reflection-y”: diffuse smaller, specular larger
         vec3 diffuse  = Kd * lightColor * NdotL * 1.0 / 3.141592;
-        vec3 specular = Ks * lightColor * pow(NdotH, shininess) * (shininess + 2.0) / 8.0;
+        vec3 specular = Ks * lightColor * pow(NdotH, Ns) * (Ns + 2.0) / 8.0;
 
         color += attenuation * (diffuse + specular);
     }

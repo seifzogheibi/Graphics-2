@@ -6,7 +6,7 @@ SimpleMeshData concatenate( SimpleMeshData aM, SimpleMeshData const& aN )
 	aM.colors.insert( aM.colors.end(), aN.colors.begin(), aN.colors.end() );
 	aM.normals.insert( aM.normals.end(), aN.normals.begin(), aN.normals.end() );
 	aM.texcoords.insert( aM.texcoords.end(), aN.texcoords.begin(), aN.texcoords.end() );
-	aM.shininess.insert( aM.shininess.end(), aN.shininess.begin(), aN.shininess.end() );
+	aM.Ns.insert( aM.Ns.end(), aN.Ns.begin(), aN.Ns.end() );
 	return aM;
 }
 
@@ -35,7 +35,7 @@ GLuint create_vao( SimpleMeshData const& aMeshData )
 	
 	GLuint texcoordsVBO = 0;
 	GLuint colorsVBO = 0;
-	GLuint shininessVBO = 0;
+	GLuint NsVBO = 0;
 	GLuint KaVBO = 0;
 	GLuint KdVBO = 0;
 	GLuint KeVBO = 0;
@@ -61,12 +61,12 @@ GLuint create_vao( SimpleMeshData const& aMeshData )
 			GL_STATIC_DRAW
 		);
 
-		glGenBuffers( 1, &shininessVBO );
-		glBindBuffer( GL_ARRAY_BUFFER, shininessVBO );
+		glGenBuffers( 1, &NsVBO );
+		glBindBuffer( GL_ARRAY_BUFFER, NsVBO );
 		glBufferData(
 			GL_ARRAY_BUFFER,
-			aMeshData.shininess.size() * sizeof(float),
-			aMeshData.shininess.data(),
+			aMeshData.Ns.size() * sizeof(float),
+			aMeshData.Ns.data(),
 			GL_STATIC_DRAW
 		);
 
@@ -160,7 +160,7 @@ GLuint create_vao( SimpleMeshData const& aMeshData )
 		glEnableVertexAttribArray( 3 );
 
 
-		glBindBuffer( GL_ARRAY_BUFFER, shininessVBO );
+		glBindBuffer( GL_ARRAY_BUFFER, NsVBO );
 		glVertexAttribPointer(
 			4,              // layout(location = 4) in vertex shader
 			1,              // single float
@@ -228,7 +228,7 @@ GLuint create_vao( SimpleMeshData const& aMeshData )
 	glDeleteBuffers( 1, &normalsVBO );
 	glDeleteBuffers( 1, &texcoordsVBO );
 	glDeleteBuffers( 1, &colorsVBO );
-	glDeleteBuffers( 1, &shininessVBO );
+	glDeleteBuffers( 1, &NsVBO );
 	glDeleteBuffers( 1, &KaVBO );
 	glDeleteBuffers( 1, &KdVBO );
 	glDeleteBuffers( 1, &KeVBO );

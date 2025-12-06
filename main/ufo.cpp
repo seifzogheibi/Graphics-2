@@ -7,6 +7,7 @@
 #include <numbers>
 
 #include "../vmlib/vec3.hpp"
+#include "../vmlib/mat44.hpp"
 
 namespace
 {
@@ -22,7 +23,7 @@ namespace
         Vec3f normal )
     {
     // Make sure the normal is unit length
-    normal = normalize(normal);
+    normal = normalize(-normal);
 
     // Push the three vertices
     positions.push_back(p0);
@@ -186,29 +187,42 @@ namespace
         Vec3f p110{ c.x + hx, c.y + hy, c.z - hz };
         Vec3f p111{ c.x + hx, c.y + hy, c.z + hz };
 
-        // +X face
-        pushTriangleFlat(positions, normals, p100, p101, p111, Vec3f{ 1.0f, 0.0f, 0.0f });
-        pushTriangleFlat(positions, normals, p100, p111, p110, Vec3f{ 1.0f, 0.0f, 0.0f });
+               // +X face (normal +X, CCW when viewed from +X)
+        pushTriangleFlat(positions, normals,
+                         p101, p100, p110, Vec3f{ 1.0f, 0.0f, 0.0f });
+        pushTriangleFlat(positions, normals,
+                         p101, p110, p111, Vec3f{ 1.0f, 0.0f, 0.0f });
 
-        // -X face
-        pushTriangleFlat(positions, normals, p000, p010, p011, Vec3f{ -1.0f, 0.0f, 0.0f });
-        pushTriangleFlat(positions, normals, p000, p011, p001, Vec3f{ -1.0f, 0.0f, 0.0f });
+        // -X face (normal -X, CCW when viewed from -X)
+        pushTriangleFlat(positions, normals,
+                         p000, p001, p011, Vec3f{ -1.0f, 0.0f, 0.0f });
+        pushTriangleFlat(positions, normals,
+                         p000, p011, p010, Vec3f{ -1.0f, 0.0f, 0.0f });
 
-        // +Y face
-        pushTriangleFlat(positions, normals, p010, p110, p111, Vec3f{ 0.0f, 1.0f, 0.0f });
-        pushTriangleFlat(positions, normals, p010, p111, p011, Vec3f{ 0.0f, 1.0f, 0.0f });
+        // +Y face (top, normal +Y)
+        pushTriangleFlat(positions, normals,
+                         p110, p010, p011, Vec3f{ 0.0f, 1.0f, 0.0f });
+        pushTriangleFlat(positions, normals,
+                         p110, p011, p111, Vec3f{ 0.0f, 1.0f, 0.0f });
 
-        // -Y face
-        pushTriangleFlat(positions, normals, p000, p001, p101, Vec3f{ 0.0f, -1.0f, 0.0f });
-        pushTriangleFlat(positions, normals, p000, p101, p100, Vec3f{ 0.0f, -1.0f, 0.0f });
+        // -Y face (bottom, normal -Y)
+        pushTriangleFlat(positions, normals,
+                         p000, p100, p101, Vec3f{ 0.0f, -1.0f, 0.0f });
+        pushTriangleFlat(positions, normals,
+                         p000, p101, p001, Vec3f{ 0.0f, -1.0f, 0.0f });
 
-        // +Z face
-        pushTriangleFlat(positions, normals, p001, p011, p111, Vec3f{ 0.0f, 0.0f, 1.0f });
-        pushTriangleFlat(positions, normals, p001, p111, p101, Vec3f{ 0.0f, 0.0f, 1.0f });
+        // +Z face (front, normal +Z)
+        pushTriangleFlat(positions, normals,
+                         p001, p101, p111, Vec3f{ 0.0f, 0.0f, 1.0f });
+        pushTriangleFlat(positions, normals,
+                         p001, p111, p011, Vec3f{ 0.0f, 0.0f, 1.0f });
 
-        // -Z face
-        pushTriangleFlat(positions, normals, p000, p100, p110, Vec3f{ 0.0f, 0.0f, -1.0f });
-        pushTriangleFlat(positions, normals, p000, p110, p010, Vec3f{ 0.0f, 0.0f, -1.0f });
+        // -Z face (back, normal -Z)
+        pushTriangleFlat(positions, normals,
+                         p000, p110, p100, Vec3f{ 0.0f, 0.0f, -1.0f });
+        pushTriangleFlat(positions, normals,
+                         p000, p010, p110, Vec3f{ 0.0f, 0.0f, -1.0f });
+
     }
 } // anonymous namespace
 
@@ -226,14 +240,14 @@ void buildUfoFlatArrays(
     outNormals.clear();
 
     // -------- rocket dimensions ----------
-    int   const slices       = 24;
+    int   const slices       = 600;
     float const bodyRadius   = 0.60f;
     float const bodyHeight   = 4.0f;
     float const engineHeight = 0.5f;
-    float const noseHeight   = 1.2f;
+    float const noseHeight   = 2.5f;
     float const finHeight    = 1.0f;
-    float const finThickness = 0.1f;
-    float const finWidth     = 0.6f;
+    float const finThickness = 0.05f;
+    float const finWidth     = 0.9f;
 
     float const bodyBottomY  = -bodyHeight * 0.5f;
     float const bodyTopY     =  bodyHeight * 0.5f;
@@ -270,7 +284,7 @@ void buildUfoFlatArrays(
     // +X
     addBox(
         outPositions, outNormals,
-        Vec3f{ finOffset, finCenterY, 0.0f },
+        Vec3f{ 0.0f, finCenterY, -finOffset },
         finThickness * 0.5f,
         finHeight   * 0.5f,
         finWidth    * 0.5f
@@ -278,7 +292,7 @@ void buildUfoFlatArrays(
     // -X
     addBox(
         outPositions, outNormals,
-        Vec3f{ -finOffset, finCenterY, 0.0f },
+        Vec3f{ 0.f, finCenterY, finOffset },
         finThickness * 0.5f,
         finHeight   * 0.5f,
         finWidth    * 0.5f
@@ -286,7 +300,7 @@ void buildUfoFlatArrays(
     // +Z
     addBox(
         outPositions, outNormals,
-        Vec3f{ 0.0f, finCenterY, finOffset },
+        Vec3f{ finOffset, finCenterY, 0.0f },
         finWidth    * 0.5f,
         finHeight   * 0.5f,
         finThickness * 0.5f
@@ -294,10 +308,41 @@ void buildUfoFlatArrays(
     // -Z
     addBox(
         outPositions, outNormals,
-        Vec3f{ 0.0f, finCenterY, -finOffset },
+        Vec3f{ -finOffset, finCenterY, 0.0f },
         finWidth    * 0.5f,
         finHeight   * 0.5f,
         finThickness * 0.5f
+    );
+
+
+
+
+
+    // Light 1  0 degrees
+    addBox(
+        outPositions, outNormals,
+        Vec3f{ -finOffset, finCenterY+3.f, 0.0f },
+        0.1f,
+        0.1f,
+        0.1f
+    );
+
+     // Light 2   2pi/3 = 120 degrees
+    addBox(
+        outPositions, outNormals,
+        Vec3f{ 0.5f * finOffset, finCenterY+3.f,  -0.8660254f * finOffset},
+        0.1f,
+        0.1f,
+        0.1f
+    );
+
+     // Light 3   4pi/3 = 240 degrees
+    addBox(
+        outPositions, outNormals,
+        Vec3f{ 0.5f * finOffset, finCenterY+3.f,  0.8660254f * finOffset },
+        0.1f,
+        0.1f,
+        0.1f
     );
 
     // Mark base-vertex count
@@ -320,7 +365,7 @@ void buildUfoFlatArrays(
 
     // 5) antenna cylinder above nose
     float const antennaRadius = 0.05f;
-    float const antennaHeight = 0.8f;
+    float const antennaHeight = 0.2f;
     float const antennaBaseY  = noseTipY;
     float const antennaTopY   = antennaBaseY + antennaHeight;
 
@@ -328,7 +373,7 @@ void buildUfoFlatArrays(
         outPositions, outNormals,
         slices,
         antennaRadius,
-        antennaBaseY,
+        antennaBaseY-0.3f,
         antennaTopY
     );
 

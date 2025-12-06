@@ -280,9 +280,8 @@ struct MeshGLColored
     Vec3f lightDir     = normalize(Vec3f{ 0.f, 1.f, -1.f });  // (0,1,-1)
     Vec3f baseColor    = { 0.6f, 0.7f, 0.6f };                // terrain-ish colour
     Vec3f ambientColor = { 0.18f, 0.18f, 0.18f };
+	Vec3f diffuseColor = { 0.6f, 0.6f, 0.6f };
 
-    // === UFO CPU build (from your Task1.5) – we’ll flesh this out next ===
-	MeshGL ufoMesh;
 
 	// Build UFO geometry on CPU
 	std::vector<Vec3f> ufoPositions;
@@ -299,49 +298,41 @@ struct MeshGLColored
 		ufoTopVertexCount
 	);
 
-
-
-
-
-
-	// Create VAO/VBO for UFO (same pattern as terrain)
-    glGenVertexArrays(1, &ufoMesh.vao);
-    glBindVertexArray(ufoMesh.vao);
-
-    glGenBuffers(1, &ufoMesh.vboPositions);
-    glBindBuffer(GL_ARRAY_BUFFER, ufoMesh.vboPositions);
-    glBufferData(
-        GL_ARRAY_BUFFER,
-        ufoPositions.size() * sizeof(Vec3f),
-        ufoPositions.data(),
-        GL_STATIC_DRAW
-    );
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(
-        0, 3, GL_FLOAT, GL_FALSE,
-        sizeof(Vec3f), (void*)0
-    );
-
-
-    glGenBuffers(1, &ufoMesh.vboNormals);
-    glBindBuffer(GL_ARRAY_BUFFER, ufoMesh.vboNormals);
-    glBufferData(
-        GL_ARRAY_BUFFER,
-        ufoNormals.size() * sizeof(Vec3f),
-        ufoNormals.data(),
-        GL_STATIC_DRAW
-    );
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(
-        1, 3, GL_FLOAT, GL_FALSE,
-        sizeof(Vec3f), (void*)0
-    );
-
-    // store count
-    ufoMesh.vertexCount = static_cast<GLsizei>(ufoPositions.size());
-
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
+	// Create SimpleMeshData with material properties for proper Blinn-Phong lighting
+	SimpleMeshData ufoMeshData;
+	ufoMeshData.positions = ufoPositions;
+	ufoMeshData.normals = ufoNormals;
+	
+	// Add material properties for each vertex
+	for (size_t i = 0; i < ufoPositions.size(); ++i)
+	{
+		if (i < static_cast<size_t>(ufoBaseVertexCount))
+		{
+			// Base (grey metallic material)
+			ufoMeshData.colors.push_back(Vec3f{0.3f, 0.3f, 0.35f});
+			ufoMeshData.Ka.push_back(Vec3f{0.2f, 0.2f, 0.25f});   // ambient
+			ufoMeshData.Kd.push_back(Vec3f{0.4f, 0.4f, 0.45f});   // diffuse
+			ufoMeshData.Ks.push_back(Vec3f{0.8f, 0.8f, 0.9f});    // specular (shiny metal)
+			ufoMeshData.Ke.push_back(Vec3f{0.0f, 0.0f, 0.0f});    // no emission
+			ufoMeshData.Ns.push_back(64.0f);                // shiny
+		}
+		else
+		{
+			// Top/dome (blue glass-like material)
+			ufoMeshData.colors.push_back(Vec3f{0.2f, 0.4f, 0.8f});
+			ufoMeshData.Ka.push_back(Vec3f{0.1f, 0.2f, 0.4f});    // ambient
+			ufoMeshData.Kd.push_back(Vec3f{0.3f, 0.5f, 0.9f});    // diffuse
+			ufoMeshData.Ks.push_back(Vec3f{0.9f, 0.9f, 1.0f});    // specular (glass-like)
+			ufoMeshData.Ke.push_back(Vec3f{0.0f, 0.0f, 0.0f});    // no emission
+			ufoMeshData.Ns.push_back(128.0f);               // very shiny
+		}
+	}
+	MeshGL ufoMesh;
+	
+	// Create VAO with material properties (uses the same function as landing pads)
+	GLuint ufoVAO = create_vao(ufoMeshData);
+	ufoMesh.vao = ufoVAO;
+	ufoMesh.vertexCount = static_cast<GLsizei>(ufoPositions.size());
 
 	GLuint terrainTexture = load_texture_2d( (ASSETS + terrainMeshData.texture_filepath).c_str() );
 
@@ -464,12 +455,16 @@ Vec3f landingPadPos2{ 8.f, -.96f, 40.f };
         };
 
 // === Attach point lights to the rocket ===
-// These offsets are in world space relative to ufoPos.
-// Tweak them in-game by printing or just eyeballing.
+// Position lights around the cylindrical body (radius ~0.30 after scaling)
+// Distributed at 120° intervals around the cylinder
 
-Vec3f lightOffset0{ 0.8f,  -0.8f,  -0.6f };   // near top / nose
-Vec3f lightOffset1{ 0.8f, -0.8f,  0.6f };   // around one fin
-Vec3f lightOffset2{-0.8f, -0.8f, -0.6f };   // around another fin
+float lightRadius = 0.75f;  // slightly outside body surface
+float lightHeight = 0.6f;  // middle of rocket body
+
+// Lights positioned around the body
+Vec3f lightOffset0{ -lightRadius * 0.5f, lightHeight, lightRadius * 0.866f };    // Red: 145°
+Vec3f lightOffset1{ lightRadius * 0.985f, lightHeight, -lightRadius * 0.174f };  // Green: 260°
+Vec3f lightOffset2{ 0.f, lightHeight, -lightRadius};                             // Blue: 270° (0° - 90° = 270°)
 
 // === End attach point lights ===
 
@@ -479,152 +474,146 @@ Vec3f lightOffset2{-0.8f, -0.8f, -0.6f };   // around another fin
         Vec3f rightWS  { 1.f, 0.f, 0.f };
         Vec3f upWS     { 0.f, 0.f, 1.f };
 
+        // Declare animation variables outside the block so they're accessible later
+         // Declare animation parameter (0..1) – used for rotation too
+        float u = 0.0f;
+
         if (gUfoAnim.active)
         {
-            float totalTime = 8.0f;  // seconds to reach "space" (tweak)
+            float totalTime = 8.0f;
             float tAnim = gUfoAnim.time;
-            if (tAnim < 0.f) tAnim = 0.f;
+            if (tAnim < 0.f)         tAnim = 0.f;
+            if (tAnim > totalTime)   tAnim = totalTime;
 
-            float u = tAnim / totalTime;   // 0..1
-            if (u > 1.f) u = 1.f;
+            // Normalised time
+            u = tAnim / totalTime;
 
             // Ease-in: start slow, then accelerate
-            float s = u * u;
+            float s = u * u;   // 0..1
 
-            // Settings: how far and how high
-			float range     = 80.0f;  // how far in -Z to travel
-			float maxHeight = 50.0f;  // extra height at the peak of the arc
+            // --- Smooth “parabolic” like path with vertical tangent at start ---
 
-			// Base (start) position
-			float x0 = ufoStartPos.x;
-			float y0 = ufoStartPos.y;
-			float z0 = ufoStartPos.z;
+            // World up
+            Vec3f worldUp{ 0.f, 1.f, 0.f };
 
-			// Move away in -Z as s increases
-			float z = z0 - range * s;
+            // Shape controls
+            float rangeZ    = 80.0f;  // how far in -Z to travel
+            float maxHeight = 50.0f;  // how high the arc goes
 
-			// Parabola in Y: 4*h*s*(1-s) gives a nice arc, peak at s = 0.5
-			float y = y0 + 4.0f * maxHeight * s * (1.0f - s);
+            // Start position
+            float x0 = ufoStartPos.x;
+            float y0 = ufoStartPos.y;
+            float z0 = ufoStartPos.z;
 
-			// X stays constant (straight plane)
-			float x = x0;
+            // Use p as our curve parameter
+            float p = s;  // still 0..1
 
-			// Current rocket position
-			ufoPos = Vec3f{ x, y, z };
+            // Horizontal motion: z(p) = z0 + rangeZ * p^2 (flipped 180 degrees)
+            // -> dz/dp = +2*rangeZ*p, so dz/dp = 0 at p=0 (vertical at launch)
+            float z = z0 + rangeZ * p * p;
 
-			// --- Approximate direction of motion using same parabola ---
-			float eps = 0.01f;
-			float s2 = s + eps;
-			if (s2 > 1.0f) s2 = 1.0f;
+            // Height: simple “up then slightly level” curve
+            // y(p) = y0 + (2*maxHeight*p - maxHeight*p*p)
+            // -> dy/dp = 2*maxHeight*(1 - p), positive, so we keep going up
+            float y = y0 + (2.f * maxHeight * p - maxHeight * p * p);
 
-			// Future point a little ahead along the same parabola
-			float z2 = z0 - range * s2;
-			float y2 = y0 + 4.0f * maxHeight * s2 * (1.0f - s2);
-			float x2 = x0;
+            float x = x0; // no sideways motion
 
-			Vec3f ufoPosAhead{ x2, y2, z2 };
-			Vec3f vel = ufoPosAhead - ufoPos;
-			float speed = length(vel);
+            ufoPos = Vec3f{ x, y, z };
 
-			if (speed > 1e-4f)
-			{
-				forwardWS = vel / speed;
+            // Direction of motion: forward = tangent of the curve
+            float eps = 0.01f;
+            float p2 = p + eps;
+            if (p2 > 1.0f) p2 = 1.0f;
 
-				Vec3f worldUp{ 0.f, 1.f, 0.f };
-				if (std::fabs(dot(forwardWS, worldUp)) > 0.99f)
-					worldUp = Vec3f{ 1.f, 0.f, 0.f };
+            float z2 = z0 + rangeZ * p2 * p2;
+            float y2 = y0 + (2.f * maxHeight * p2 - maxHeight * p2 * p2);
+            float x2 = x0;
 
-				rightWS = normalize(cross(worldUp, forwardWS));
-				upWS    = cross(forwardWS, rightWS);
-			}
-					}
-					else
-					{
-						// Not active: parked
-						ufoPos    = ufoStartPos;
-						forwardWS = Vec3f{ 0.f, 1.f, 0.f };
-						rightWS   = Vec3f{ 1.f, 0.f, 0.f };
-						upWS      = Vec3f{ 0.f, 0.f, 1.f };
-					}
+            Vec3f ufoPosAhead{ x2, y2, z2 };
+            Vec3f vel = ufoPosAhead - ufoPos;
+            float speed = length(vel);
+
+            if (speed > 1e-4f)
+            {
+                forwardWS = vel / speed;
+
+                Vec3f upGuess{ 0.f, 1.f, 0.f };
+                if (std::fabs(dot(forwardWS, upGuess)) > 0.99f)
+                    upGuess = Vec3f{ 1.f, 0.f, 0.f };
+
+                rightWS = normalize(cross(upGuess, forwardWS));
+                upWS    = cross(forwardWS, rightWS);
+            }
+        }
+        else
+        {
+            // Not active: parked upright on the pad
+            ufoPos    = ufoStartPos;
+            forwardWS = Vec3f{ 0.f, 1.f, 0.f };
+            rightWS   = Vec3f{ 1.f, 0.f, 0.f };
+            upWS      = Vec3f{ 0.f, 0.f, 1.f };
+        }
+
+		
 
 // ===================
-// Orientation from path, but eased from "upright"
+// Orientation from path (no abrupt change)
 // ===================
 
-// 1) Angles that would exactly follow the path
-float fyPath = forwardWS.y;
-if (fyPath > 1.0f)  fyPath = 1.0f;
-if (fyPath < -1.0f) fyPath = -1.0f;
+float fy = forwardWS.y;
+if (fy > 1.0f)  fy = 1.0f;
+if (fy < -1.0f) fy = -1.0f;
 
-float yawPath   = std::atan2(forwardWS.x, -forwardWS.z); // note the minus on z
-float pitchPath = std::asin(fyPath);
+// Angles that follow the path
+float yawPath   = std::atan2(forwardWS.x, -forwardWS.z);
+float pitchPath = std::asin(fy);
 
-// 2) Start angles for an upright rocket (nose straight up)
-// In our camera convention, pitch = +pi/2 means "look straight up"
+// Start angles when idle: rocket is vertical (nose up)
 float yawStart   = 0.0f;
 float pitchStart = 0.5f * std::numbers::pi_v<float>;
 
-// 3) Blend factor based on time since launch
-float turnTime = 2.0f;   // seconds to finish pitching over; tweak to taste
-float alpha = 1.0f;
-
-if (!gUfoAnim.active)
+// Blend factor: gradually transition from upright to path-following
+// Start at 0 (upright), gradually increase as UFO gains horizontal velocity
+float alpha = 0.0f;
+if (gUfoAnim.active && u > 0.0f)
 {
-    alpha = 0.0f;
-}
-else if (gUfoAnim.time <= 0.0f)
-{
-    alpha = 0.0f;
-}
-else if (gUfoAnim.time < turnTime)
-{
-    alpha = gUfoAnim.time / turnTime;
-}
-else
-{
-    alpha = 1.0f;
+    // Smooth transition: stays upright early, then follows path
+    // Use a steeper curve so it stays upright longer
+    alpha = std::min(1.0f, u * u * 3.0f);
 }
 
-// 4) Interpolated angles
+// Interpolated angles
 float ufoYaw   = yawStart   + alpha * (yawPath   - yawStart);
 float ufoPitch = pitchStart + alpha * (pitchPath - pitchStart);
+float ufoRoll  = 0.0f;
 
-// We don't need roll for the coursework (no banking)
-float ufoRoll = 0.0f;
-
-// 5) Orientation matrix from Euler angles, using only mat44.hpp helpers
+// Orientation matrix using only mat44 helpers
 Mat44f ufoOrient =
     make_rotation_y(ufoYaw) *
     make_rotation_x(ufoPitch) *
     make_rotation_z(ufoRoll);
 
+// Mesh correction (as you already had)
 Mat44f ufoRot =
     ufoOrient *
     make_rotation_y(std::numbers::pi_v<float>) *
     make_rotation_x(0.5f * std::numbers::pi_v<float>);
 
+// Full model
+Mat44f ufoModel =
+    make_translation(ufoPos) *
+    ufoRot *
+    make_scaling(0.5f, 0.5f, 0.5f);
 
 
 
-
-
-
-
-
+		// Attach point lights to UFO
 		gPointLights[0].position = ufoPos + lightOffset0;
 		gPointLights[1].position = ufoPos + lightOffset1;
 		gPointLights[2].position = ufoPos + lightOffset2;
 
 
-
-
-
-
-        // Full UFO model (position + orientation + scale)      
-		  Mat44f ufoModel =
-            make_translation(ufoPos) *
-            ufoRot *
-            make_scaling(0.5f, 0.5f, 0.5f);
 
         // ========================
         // 3) Camera movement (free mode) – same as before
@@ -754,7 +743,9 @@ Mat44f ufoRot =
         Mat44f ufoMvp = viewProj * ufoModel;
 
         // 6) Normal matrix (still fine with model = identity)
-        Mat33f normalMatrix = mat44_to_mat33( transpose(invert(model)) );
+		// --- Normal matrices ---
+		// 6) Normal matrix (still fine with model = identity)
+		Mat33f normalMatrix = mat44_to_mat33( transpose(invert(model)) );
 
 		// Draw scene
 		OGL_CHECKPOINT_DEBUG();
@@ -788,6 +779,11 @@ glUniformMatrix3fv(
 // Camera position (location = 6)
 glUniform3fv(6, 1, &camPosForLighting.x);
 
+
+// Tell shader to use the texture
+glUniform1i(17, 1);  // uUseTexture = 1
+
+
 // Point lights (locations 7-9, 10-12, 13-15)
 Vec3f pointLightPositions[3] = {
     gPointLights[0].position,
@@ -805,7 +801,6 @@ GLint pointLightEnabled[3] = {
     gPointLights[2].enabled ? 1 : 0
 };
 
-
 glUniform3fv(7, 3, &pointLightPositions[0].x);   // locations 7, 8, 9
 glUniform3fv(10, 3, &pointLightColors[0].x);     // locations 10, 11, 12
 glUniform1iv(13, 3, pointLightEnabled);          // locations 13, 14, 15
@@ -813,10 +808,18 @@ glUniform1iv(13, 3, pointLightEnabled);          // locations 13, 14, 15
 // Directional light enabled (location = 16)
 glUniform1i(16, gDirectionalLightEnabled ? 1 : 0);
 
+
+
 // ====================
 // Draw TERRAIN
 // ====================
+glUniformMatrix3fv(
+    1,  // location = 1 in the shader
+    1, GL_TRUE, normalMatrix.v
+);
+
 glUniformMatrix4fv(0, 1, GL_TRUE, terrainMvp.v);
+glUniformMatrix4fv(18, 1, GL_TRUE, model.v);   // uModel at location 18
 
 // Terrain colour from your 1.3 work
 glUniform3fv(3, 1, &baseColor[0]);
@@ -837,20 +840,39 @@ glBindVertexArray(0);
 // Draw UFO
 // ====================
 
-// Colours
-Vec3f saucerColor{ 0.3f, 0.55f, 0.95f };  // dark-ish grey base
-Vec3f domeColor  { 0.3f,  0.55f, 0.95f };  // light blue dome+antenna
+glUniformMatrix3fv(
+	1,  // location = 1 in the shader
+	1, GL_TRUE, normalMatrix.v
+);
+
+
+glUniformMatrix4fv(18, 1, GL_TRUE, ufoModel.v);   // uModel at location 18
 
 glBindVertexArray(ufoMesh.vao);
 
-// 1) Base saucer (grey) : vertices [0, ufoBaseVertexCount)
-glUniform3fv(3, 1, &saucerColor[0]);
+// Tell shader to ignore texture and just use uBaseColor
+glUniform1i(17, 0);  // uUseTexture = 0
+
+// Base (body + fins)
+Vec3f bodyColor{ 0.2f, 0.28f, 0.38f };   // tweak
+glUniform3fv(3, 1, &bodyColor[0]);
 glUniformMatrix4fv(0, 1, GL_TRUE, ufoMvp.v);
 glDrawArrays(GL_TRIANGLES, 0, ufoBaseVertexCount);
 
-// 2) Top dome + antenna (light blue) : vertices [ufoBaseVertexCount, ufoBaseVertexCount + ufoTopVertexCount)
-glUniform3fv(3, 1, &domeColor[0]);
+// Top (nose + antenna)
+Vec3f topColor{ 0.25f, 0.45f, 0.95f };
+glUniform3fv(3, 1, &topColor[0]);
 glDrawArrays(GL_TRIANGLES, ufoBaseVertexCount, ufoTopVertexCount);
+
+
+// // 1) Base saucer (grey) : vertices [0, ufoBaseVertexCount)
+// glUniform3fv(3, 1, &saucerColor[0]);
+// glUniformMatrix4fv(0, 1, GL_TRUE, ufoMvp.v);
+// glDrawArrays(GL_TRIANGLES, 0, ufoBaseVertexCount);
+
+// // 2) Top dome + antenna (light blue) : vertices [ufoBaseVertexCount, ufoBaseVertexCount + ufoTopVertexCount)
+// glUniform3fv(3, 1, &domeColor[0]);
+// glDrawArrays(GL_TRIANGLES, ufoBaseVertexCount, ufoTopVertexCount);
 
 glBindVertexArray(0);
 

@@ -15,12 +15,11 @@ struct SimpleMeshData
 	std::vector<Vec3f> normals;
 	std::vector<Vec3f> colors;
 	std::vector<Vec2f> texcoords;
-	std::vector<float> shininess;
+	std::vector<float> Ns;
 	std::vector<Vec3f> Ka;
 	std::vector<Vec3f> Kd;
 	std::vector<Vec3f> Ke;
 	std::vector<Vec3f> Ks;
-	std::vector<float> Ns;
 
 	bool has_texture() const
 	{

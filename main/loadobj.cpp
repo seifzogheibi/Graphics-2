@@ -84,7 +84,7 @@ for( auto const& shape : res.shapes )
 				mat.specular[1],
 				mat.specular[2]
 			} );
-			ret.shininess.emplace_back( mat.shininess );
+			ret.Ns.emplace_back( mat.shininess );
 			
 		}
 }

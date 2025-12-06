@@ -3,6 +3,12 @@
 in vec3 vNormal;
 in vec2 vTexCoord;
 in vec3 vPosition;
+// Material properties from vertex shader
+in vec3 vKa;
+in vec3 vKd;
+in vec3 vKe;
+in vec3 vKs;
+in float vNs;
 
 // Directional light + material base colour
 layout (location = 2) uniform vec3 uLightDir;
@@ -16,6 +22,8 @@ layout (location = 7)  uniform vec3 uPointLightPos[3];      // 7, 8, 9
 layout (location = 10) uniform vec3 uPointLightColor[3];    // 10, 11, 12
 layout (location = 13) uniform int  uPointLightEnabled[3];  // 13, 14, 15
 layout (location = 16) uniform int  uDirectionalEnabled;    // 16
+layout (location = 17) uniform int uUseTexture;  // 0 = use materials, 1 = use texture
+
 
 out vec4 oColor;
 
@@ -24,11 +32,26 @@ void main()
     vec3 N = normalize(vNormal);
     vec3 V = normalize(uCameraPos - vPosition);
 
-    // --- Material parameters (you can tweak these numbers) ---
-    vec3 texColor  = texture(uTexture, vTexCoord).rgb;
-    vec3 Kd        = texColor * uBaseColor;   // diffuse
-    vec3 Ks        = vec3(0.05);              // MUCH weaker specular
-    float shininess = 16.0;                   // broader, softer highlight
+   // --- Material parameters ---
+    vec3 Ka, Kd, Ks, Ke;
+    float Ns;
+    
+    if (uUseTexture != 0) {
+        // Terrain mode: use texture
+        vec3 texColor = texture(uTexture, vTexCoord).rgb;
+        Ka = uAmbientColor;
+        Kd = texColor * uBaseColor;
+        Ks = vec3(0.05);
+        Ke = vec3(0.0);
+        Ns = 16.0;
+    } else {
+        // UFO mode: use per-vertex material properties
+        Ka = vKa;
+        Kd = vKd;
+        Ks = vKs;
+        Ke = vKe;
+        Ns = max(vNs, 1.0);
+    }
 
     // Ambient term
     vec3 color = uAmbientColor * Kd;
@@ -48,7 +71,7 @@ void main()
 
             // Slightly reduce influence so it doesn’t blow out
             vec3 diffuse  = 0.8 * Kd * NdotL;
-            vec3 specular = 0.2 * Ks * pow(NdotH, shininess);
+            vec3 specular = 0.2 * Ks * pow(NdotH, Ns);
 
             color += diffuse + specular;
         }
@@ -76,7 +99,7 @@ void main()
         float NdotH = max(dot(N, H), 0.0);
 
         vec3 diffuse  = Kd * uPointLightColor[i] * NdotL;
-        vec3 specular = Ks * uPointLightColor[i] * pow(NdotH, shininess);
+        vec3 specular = Ks * uPointLightColor[i] * pow(NdotH, Ns);
 
         color += attenuation * (diffuse + specular);
     }

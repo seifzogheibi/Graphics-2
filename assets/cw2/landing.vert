@@ -5,7 +5,7 @@ layout(location = 0) in vec3 iPosition;
 layout(location = 1) in vec3 iNormal;
 layout(location = 3) in vec3 iColor;     // not strictly needed, but OK to keep
 
-layout(location = 4) in float iShininess;
+layout(location = 4) in float iNs;
 layout(location = 5) in vec3  iKa;       // ambient
 layout(location = 6) in vec3  iKd;       // diffuse
 layout(location = 7) in vec3  iKe;       // emissive
@@ -22,7 +22,7 @@ out vec3 vKa;
 out vec3 vKd;
 out vec3 vKe;
 out vec3 vKs;
-out float vShininess;
+out float vNs;
 
 void main()
 {
@@ -37,7 +37,7 @@ void main()
     vKd        = iKd;
     vKe        = iKe;
     vKs        = iKs;
-    vShininess = iShininess;
+    vNs = iNs;
 
     gl_Position = uProj * worldPos;  // uProj = viewProj
 }
