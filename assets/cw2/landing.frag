@@ -87,8 +87,8 @@ void main()
         vec3 lightColor = uPointLightColor[i] * POINT_INTENSITY;
 
         // more “reflection-y”: diffuse smaller, specular larger
-        vec3 diffuse  = 0.3 * Kd * lightColor * NdotL;
-        vec3 specular = 0.7 * Ks * lightColor * pow(NdotH, shininess);
+        vec3 diffuse  = Kd * lightColor * NdotL * 1.0 / 3.141592;
+        vec3 specular = Ks * lightColor * pow(NdotH, shininess) * (shininess + 2.0) / 8.0;
 
         color += attenuation * (diffuse + specular);
     }

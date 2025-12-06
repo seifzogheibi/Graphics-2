@@ -471,9 +471,6 @@ Vec3f lightOffset0{ 0.8f,  -0.8f,  -0.6f };   // near top / nose
 Vec3f lightOffset1{ 0.8f, -0.8f,  0.6f };   // around one fin
 Vec3f lightOffset2{-0.8f, -0.8f, -0.6f };   // around another fin
 
-gPointLights[0].position = ufoStartPos + lightOffset0;
-gPointLights[1].position = ufoStartPos + lightOffset1;
-gPointLights[2].position = ufoStartPos + lightOffset2;
 // === End attach point lights ===
 
         // Defaults (parked, pointing up)
@@ -494,66 +491,134 @@ gPointLights[2].position = ufoStartPos + lightOffset2;
             // Ease-in: start slow, then accelerate
             float s = u * u;
 
-            // Bézier control points
-            Vec3f P0 = ufoStartPos;
-            Vec3f P1 = ufoStartPos + Vec3f{ 0.f,   3.f,   0.f };
-            Vec3f P2 = ufoStartPos + Vec3f{ 0.f,  15.f, -20.f };
-            Vec3f P3 = ufoStartPos + Vec3f{ 0.f,  40.f, -80.f };
+            // Settings: how far and how high
+			float range     = 80.0f;  // how far in -Z to travel
+			float maxHeight = 50.0f;  // extra height at the peak of the arc
 
-            // Current position
-            ufoPos = bezier3(P0, P1, P2, P3, s);
+			// Base (start) position
+			float x0 = ufoStartPos.x;
+			float y0 = ufoStartPos.y;
+			float z0 = ufoStartPos.z;
 
-            // Approximate direction of motion
-            float eps = 0.01f;
-            float s2  = s + eps;
-            if (s2 > 1.f) s2 = 1.f;
+			// Move away in -Z as s increases
+			float z = z0 - range * s;
 
-            Vec3f ufoPosAhead = bezier3(P0, P1, P2, P3, s2);
-            Vec3f vel = ufoPosAhead - ufoPos;
-            float speed = length(vel);
+			// Parabola in Y: 4*h*s*(1-s) gives a nice arc, peak at s = 0.5
+			float y = y0 + 4.0f * maxHeight * s * (1.0f - s);
 
-            if (speed > 1e-4f)
-            {
-                forwardWS = vel / speed;       // direction of movement
+			// X stays constant (straight plane)
+			float x = x0;
 
-                Vec3f worldUp{ 0.f, 1.f, 0.f };
-                if (std::fabs(dot(forwardWS, worldUp)) > 0.99f)
-                {
-                    worldUp = Vec3f{ 1.f, 0.f, 0.f };
-                }
+			// Current rocket position
+			ufoPos = Vec3f{ x, y, z };
 
-                // Right-handed basis
-                rightWS = normalize(cross(worldUp, forwardWS));
-                upWS    = cross(forwardWS, rightWS);
-            }
-        }
-        else
-        {
-            // Not active: parked
-            ufoPos    = ufoStartPos;
-            forwardWS = Vec3f{ 0.f, 1.f, 0.f };
-            rightWS   = Vec3f{ 1.f, 0.f, 0.f };
-            upWS      = Vec3f{ 0.f, 0.f, 1.f };
-        }
+			// --- Approximate direction of motion using same parabola ---
+			float eps = 0.01f;
+			float s2 = s + eps;
+			if (s2 > 1.0f) s2 = 1.0f;
 
-        // Build rotation matrix from basis vectors:
-        // local X -> rightWS, local Y -> forwardWS, local Z -> upWS
-        Mat44f ufoRot = kIdentity44f;
+			// Future point a little ahead along the same parabola
+			float z2 = z0 - range * s2;
+			float y2 = y0 + 4.0f * maxHeight * s2 * (1.0f - s2);
+			float x2 = x0;
 
-        // Column 0 = right
-        ufoRot[0,0] = rightWS.x;
-        ufoRot[1,0] = rightWS.y;
-        ufoRot[2,0] = rightWS.z;
+			Vec3f ufoPosAhead{ x2, y2, z2 };
+			Vec3f vel = ufoPosAhead - ufoPos;
+			float speed = length(vel);
 
-        // Column 1 = forward (nose)
-        ufoRot[0,1] = forwardWS.x;
-        ufoRot[1,1] = forwardWS.y;
-        ufoRot[2,1] = forwardWS.z;
+			if (speed > 1e-4f)
+			{
+				forwardWS = vel / speed;
 
-        // Column 2 = up
-        ufoRot[0,2] = upWS.x;
-        ufoRot[1,2] = upWS.y;
-        ufoRot[2,2] = upWS.z;
+				Vec3f worldUp{ 0.f, 1.f, 0.f };
+				if (std::fabs(dot(forwardWS, worldUp)) > 0.99f)
+					worldUp = Vec3f{ 1.f, 0.f, 0.f };
+
+				rightWS = normalize(cross(worldUp, forwardWS));
+				upWS    = cross(forwardWS, rightWS);
+			}
+					}
+					else
+					{
+						// Not active: parked
+						ufoPos    = ufoStartPos;
+						forwardWS = Vec3f{ 0.f, 1.f, 0.f };
+						rightWS   = Vec3f{ 1.f, 0.f, 0.f };
+						upWS      = Vec3f{ 0.f, 0.f, 1.f };
+					}
+
+// ===================
+// Orientation from path, but eased from "upright"
+// ===================
+
+// 1) Angles that would exactly follow the path
+float fyPath = forwardWS.y;
+if (fyPath > 1.0f)  fyPath = 1.0f;
+if (fyPath < -1.0f) fyPath = -1.0f;
+
+float yawPath   = std::atan2(forwardWS.x, -forwardWS.z); // note the minus on z
+float pitchPath = std::asin(fyPath);
+
+// 2) Start angles for an upright rocket (nose straight up)
+// In our camera convention, pitch = +pi/2 means "look straight up"
+float yawStart   = 0.0f;
+float pitchStart = 0.5f * std::numbers::pi_v<float>;
+
+// 3) Blend factor based on time since launch
+float turnTime = 2.0f;   // seconds to finish pitching over; tweak to taste
+float alpha = 1.0f;
+
+if (!gUfoAnim.active)
+{
+    alpha = 0.0f;
+}
+else if (gUfoAnim.time <= 0.0f)
+{
+    alpha = 0.0f;
+}
+else if (gUfoAnim.time < turnTime)
+{
+    alpha = gUfoAnim.time / turnTime;
+}
+else
+{
+    alpha = 1.0f;
+}
+
+// 4) Interpolated angles
+float ufoYaw   = yawStart   + alpha * (yawPath   - yawStart);
+float ufoPitch = pitchStart + alpha * (pitchPath - pitchStart);
+
+// We don't need roll for the coursework (no banking)
+float ufoRoll = 0.0f;
+
+// 5) Orientation matrix from Euler angles, using only mat44.hpp helpers
+Mat44f ufoOrient =
+    make_rotation_y(ufoYaw) *
+    make_rotation_x(ufoPitch) *
+    make_rotation_z(ufoRoll);
+
+Mat44f ufoRot =
+    ufoOrient *
+    make_rotation_y(std::numbers::pi_v<float>) *
+    make_rotation_x(0.5f * std::numbers::pi_v<float>);
+
+
+
+
+
+
+
+
+
+		gPointLights[0].position = ufoPos + lightOffset0;
+		gPointLights[1].position = ufoPos + lightOffset1;
+		gPointLights[2].position = ufoPos + lightOffset2;
+
+
+
+
+
 
         // Full UFO model (position + orientation + scale)      
 		  Mat44f ufoModel =
@@ -820,13 +885,13 @@ glBindVertexArray(0);
 
 	// First landing pad
 	Mat44f lpModel1 = make_translation(landingPadPos1);
-	glUniformMatrix4fv(0, 1, GL_TRUE, proj.v);         // ViewProj at location 0 (NOT MVP)
+	glUniformMatrix4fv(0, 1, GL_TRUE, viewProj.v);     // ViewProj at location 0
 	glUniformMatrix4fv(17, 1, GL_TRUE, lpModel1.v);    // Model at location 17
 	glDrawArrays(GL_TRIANGLES, 0, landingMeshData.positions.size());
 
 	// Second landing pad
 	Mat44f lpModel2 = make_translation(landingPadPos2);
-	glUniformMatrix4fv(0, 1, GL_TRUE, proj.v);         // ViewProj at location 0 (NOT MVP)
+	glUniformMatrix4fv(0, 1, GL_TRUE, viewProj.v);     // ViewProj at location 0
 	glUniformMatrix4fv(17, 1, GL_TRUE, lpModel2.v);    // Model at location 17
 	glDrawArrays(GL_TRIANGLES, 0, landingMeshData.positions.size());		glBindVertexArray(0);
 
