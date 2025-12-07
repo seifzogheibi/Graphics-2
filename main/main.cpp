@@ -26,6 +26,7 @@
 #include "../vmlib/vec2.hpp"
 #include "../vmlib/vec3.hpp"
 #include <vector>
+#include "ui.hpp"
 
 #define ASSETS "assets/cw2/"
 
@@ -347,7 +348,12 @@ namespace
         glBindVertexArray(0);
     }
     // 1.9 END
-
+        // 1.11
+        // Mouse state for UI
+        double gMouseX = 0.0;
+        double gMouseY = 0.0;
+        bool gMouseLeftDown = false;
+        // 1.11 END
 
     // Forward declarations for extra callbacks
     void glfw_callback_mouse_button_( GLFWwindow* , int , int , int );
@@ -634,6 +640,12 @@ MeshGL ufoMesh;	// Create VAO with material properties (uses the same function a
         load_wavefront_obj("assets/cw2/landingpad.obj");
     GLuint landingVao = create_vao(landingMeshData);
 
+    // Create UI renderer
+    UIRenderer uiRenderer(1280, 720);
+
+    Button launchButton{"Launch", 0, 0, 120, 40};
+    Button resetButton{"Reset", 0, 0, 120, 40};
+
     // Point lights
     gPointLights[0].color = Vec3f{ 1.f,   0.f,   0.f   };
     gPointLights[1].color = Vec3f{ 0.f,   1.f,   0.f   };
@@ -853,6 +865,16 @@ MeshGL ufoMesh;	// Create VAO with material properties (uses the same function a
             gCamera.position.x, gCamera.position.y, gCamera.position.z
         );
 
+        // Update button positions (bottom center)
+        float buttonY = fbheight - 60.0f;  // 60px from bottom
+        launchButton.x = fbwidth / 2.0f - 70.0f;  // Left button
+        launchButton.y = buttonY;
+        resetButton.x = fbwidth / 2.0f + 70.0f;   // Right button
+        resetButton.y = buttonY;
+
+        // After glClear and before OGL_CHECKPOINT_DEBUG at the end (around line 750, AFTER glfwSwapBuffers)
+
+
 // ===== DRAW =====
 OGL_CHECKPOINT_DEBUG();
 
@@ -985,6 +1007,41 @@ else
     // Restore full viewport for next frame
     glViewport(0, 0, static_cast<int>(fbwidth), static_cast<int>(fbheight));
 }
+
+        // Render UI
+        uiRenderer.setWindowSize(static_cast<int>(fbwidth), static_cast<int>(fbheight));
+        uiRenderer.beginFrame();
+
+        // Top-left altitude display
+        char altitudeText[64];
+        std::snprintf(altitudeText, sizeof(altitudeText), "Altitude: %.1f m", ufoPos.y);
+        uiRenderer.renderText(10.0f, 10.0f, altitudeText, 24.0f, Vec4f{1.0f, 1.0f, 1.0f, 1.0f});
+
+        // Bottom-center buttons
+        if (uiRenderer.renderButton(launchButton, gMouseX, gMouseY, gMouseLeftDown))
+        {
+            // Launch clicked
+            if (!gUfoAnim.active)
+            {
+                gUfoAnim.active = true;
+                gUfoAnim.paused = false;
+                gUfoAnim.time = 0.f;
+            }
+            else
+            {
+                gUfoAnim.paused = !gUfoAnim.paused;
+            }
+        }
+
+        if (uiRenderer.renderButton(resetButton, gMouseX, gMouseY, gMouseLeftDown))
+        {
+            // Reset clicked
+            gUfoAnim.active = false;
+            gUfoAnim.paused = false;
+            gUfoAnim.time = 0.f;
+        }
+
+        uiRenderer.endFrame();
 
 glfwSwapBuffers( window );
     }
@@ -1131,6 +1188,12 @@ namespace
 
     void glfw_callback_mouse_button_( GLFWwindow* window, int button, int action, int )
     {
+        // Handle left mouse button for UI
+        if (button == GLFW_MOUSE_BUTTON_LEFT)
+        {
+            gMouseLeftDown = (action == GLFW_PRESS);
+        }
+        
         if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS)
         {
             gCamera.mouseCaptured = !gCamera.mouseCaptured;
@@ -1149,6 +1212,11 @@ namespace
 
     void glfw_callback_cursor_pos_( GLFWwindow*, double xpos, double ypos )
     {
+
+        // Update mouse position for UI
+        gMouseX = xpos;
+        gMouseY = ypos;
+
         if (!gCamera.mouseCaptured)
             return;
 
