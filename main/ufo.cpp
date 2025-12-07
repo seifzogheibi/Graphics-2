@@ -234,7 +234,17 @@ void buildUfoFlatArrays(
     std::vector<Vec3f>& outPositions,
     std::vector<Vec3f>& outNormals,
     int& outBaseVertexCount,
-    int& outTopVertexCount )
+    int& outTopVertexCount, 
+    int& outBodyStart,
+    int& outBodyCount,
+    int& outEngineStart,
+    int& outEngineCount,
+    int& outFinsStart,
+    int& outFinsCount,
+    int& outBulbsStart,
+    int& outBulbsCount,
+    int& outTopStart,
+    int& outTopCount)
 {
     outPositions.clear();
     outNormals.clear();
@@ -252,10 +262,11 @@ void buildUfoFlatArrays(
     float const bodyBottomY  = -bodyHeight * 0.5f;
     float const bodyTopY     =  bodyHeight * 0.5f;
 
-    // ---------------- BASE PARTS (grey) ----------------
+  // ---------------- BASE PARTS ----------------
     std::size_t baseStart = outPositions.size();
 
     // 1) main body
+    std::size_t bodyStart = outPositions.size();
     addCylinder(
         outPositions, outNormals,
         slices,
@@ -263,8 +274,9 @@ void buildUfoFlatArrays(
         bodyBottomY,
         bodyTopY
     );
-
+    std::size_t bodyEnd = outPositions.size();
     // 2) engine at bottom
+    std::size_t engineStart = outPositions.size();
     float const engineRadius  = bodyRadius * 0.7f;
     float const engineTopY    = bodyBottomY;
     float const engineBottomY = engineTopY - engineHeight;
@@ -276,8 +288,11 @@ void buildUfoFlatArrays(
         engineBottomY,
         engineTopY
     );
+    std::size_t engineEnd = outPositions.size();
 
     // 3) four fins (boxes)
+    std::size_t finsStart = outPositions.size();
+
     float const finCenterY = bodyBottomY + finHeight * 0.5f;
     float const finOffset  = bodyRadius + finThickness * 0.5f;
 
@@ -314,9 +329,10 @@ void buildUfoFlatArrays(
         finThickness * 0.5f
     );
 
+    std::size_t finsEnd = outPositions.size();
 
-
-
+    // 4) three small light bulbs (boxes)
+    std::size_t bulbsStart = outPositions.size();
 
     // Light 1  0 degrees
     addBox(
@@ -327,7 +343,7 @@ void buildUfoFlatArrays(
         0.1f
     );
 
-     // Light 2   2pi/3 = 120 degrees
+    // Light 2   2pi/3 = 120 degrees
     addBox(
         outPositions, outNormals,
         Vec3f{ 0.5f * finOffset, finCenterY+3.f,  -0.8660254f * finOffset},
@@ -336,7 +352,7 @@ void buildUfoFlatArrays(
         0.1f
     );
 
-     // Light 3   4pi/3 = 240 degrees
+    // Light 3   4pi/3 = 240 degrees
     addBox(
         outPositions, outNormals,
         Vec3f{ 0.5f * finOffset, finCenterY+3.f,  0.8660254f * finOffset },
@@ -345,50 +361,70 @@ void buildUfoFlatArrays(
         0.1f
     );
 
+    std::size_t bulbsEnd = outPositions.size();
+
     // Mark base-vertex count
     outBaseVertexCount = static_cast<int>(outPositions.size() - baseStart);
+    // ------------- TOP PARTS -------------
+       std::size_t topStart = outPositions.size();
+   
+       // 4) nose cone, sitting on top of body
+       float const noseBaseY = bodyTopY;
+       float const noseTipY  = noseBaseY + noseHeight;
+   
+       addCone(
+           outPositions, outNormals,
+           slices,
+           bodyRadius * 1.0f,
+           noseBaseY,
+           noseTipY
+       );
+   
+       // 5) antenna cylinder above nose
+       float const antennaRadius = 0.05f;
+       float const antennaHeight = 0.2f;
+       float const antennaBaseY  = noseTipY;
+       float const antennaTopY   = antennaBaseY + antennaHeight;
+   
+       addCylinder(
+           outPositions, outNormals,
+           slices,
+           antennaRadius,
+           antennaBaseY-0.3f,
+           antennaTopY
+       );
+   
+       // 6) tiny cone tip at very top
+       float const tipRadius = 0.05f;
+       float const tipBaseY  = antennaTopY;
+       float const tipTopY   = tipBaseY + 0.5f;
+   
+       addCone(
+           outPositions, outNormals,
+           slices,
+           tipRadius,
+           tipBaseY,
+           tipTopY
+       );
+   
+       std::size_t topEnd = outPositions.size();
+   
+       outTopVertexCount = static_cast<int>(topEnd - topStart); 
+       
+       // Export all the ranges as ints for main.cpp
+           outBodyStart   = static_cast<int>(bodyStart);
+           outBodyCount   = static_cast<int>(bodyEnd - bodyStart);
+       
+           outEngineStart = static_cast<int>(engineStart);
+           outEngineCount = static_cast<int>(engineEnd - engineStart);
+       
+           outFinsStart   = static_cast<int>(finsStart);
+           outFinsCount   = static_cast<int>(finsEnd - finsStart);
+       
+           outBulbsStart  = static_cast<int>(bulbsStart);
+           outBulbsCount  = static_cast<int>(bulbsEnd - bulbsStart);
+       
+           outTopStart    = static_cast<int>(topStart);
+           outTopCount    = static_cast<int>(topEnd - topStart);
 
-    // ------------- TOP PARTS (blue glass / antenna) -------------
-    std::size_t topStart = outPositions.size();
-
-    // 4) nose cone, sitting on top of body
-    float const noseBaseY = bodyTopY;
-    float const noseTipY  = noseBaseY + noseHeight;
-
-    addCone(
-        outPositions, outNormals,
-        slices,
-        bodyRadius * 1.0f,
-        noseBaseY,
-        noseTipY
-    );
-
-    // 5) antenna cylinder above nose
-    float const antennaRadius = 0.05f;
-    float const antennaHeight = 0.2f;
-    float const antennaBaseY  = noseTipY;
-    float const antennaTopY   = antennaBaseY + antennaHeight;
-
-    addCylinder(
-        outPositions, outNormals,
-        slices,
-        antennaRadius,
-        antennaBaseY-0.3f,
-        antennaTopY
-    );
-
-    // 6) tiny cone tip at very top
-    float const tipRadius = 0.05f;
-    float const tipBaseY  = antennaTopY;
-    float const tipTopY   = tipBaseY + 0.5f;
-
-    addCone(
-        outPositions, outNormals,
-        slices,
-        tipRadius,
-        tipBaseY,
-        tipTopY
-    );
-
-    outTopVertexCount = static_cast<int>(outPositions.size() - topStart);
 }

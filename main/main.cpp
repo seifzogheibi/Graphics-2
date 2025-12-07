@@ -460,49 +460,163 @@ int main() try
     std::vector<Vec3f> ufoPositions;
     std::vector<Vec3f> ufoNormals;
 
-    int ufoBaseVertexCount = 0;
-    int ufoTopVertexCount  = 0;
+	// counts for base (all bottom parts) and top (nose + antenna)
+	int ufoBaseVertexCount = 0;
+	int ufoTopVertexCount  = 0;
 
-    buildUfoFlatArrays(
-        ufoPositions,
-        ufoNormals,
-        ufoBaseVertexCount,
-        ufoTopVertexCount
-    );
+	// sub-part ranges
+	int ufoBodyStart   = 0, ufoBodyCount   = 0;
+	int ufoEngineStart = 0, ufoEngineCount = 0;
+	int ufoFinsStart   = 0, ufoFinsCount   = 0;
+	int ufoBulbsStart  = 0, ufoBulbsCount  = 0;
+	int ufoTopStart    = 0, ufoTopCount    = 0;
 
-    // Build SimpleMeshData with materials for UFO
-    SimpleMeshData ufoMeshData;
-    ufoMeshData.positions = ufoPositions;
-    ufoMeshData.normals   = ufoNormals;
+	// Call buildUfoFlatArrays FIRST to populate the vectors
+	buildUfoFlatArrays(
+		ufoPositions,
+		ufoNormals,
+		ufoBaseVertexCount,
+		ufoTopVertexCount,
+		ufoBodyStart,
+		ufoBodyCount,
+		ufoEngineStart,
+		ufoEngineCount,
+		ufoFinsStart,
+		ufoFinsCount,
+		ufoBulbsStart,
+		ufoBulbsCount,
+		ufoTopStart,
+		ufoTopCount
+	);
 
-    for (size_t i = 0; i < ufoPositions.size(); ++i)
-    {
-        if (i < static_cast<size_t>(ufoBaseVertexCount))
-        {
-            // Base metallic
-            ufoMeshData.colors.push_back(Vec3f{0.3f, 0.3f, 0.35f});
-            ufoMeshData.Ka.push_back(Vec3f{0.2f, 0.2f, 0.25f});
-            ufoMeshData.Kd.push_back(Vec3f{0.4f, 0.4f, 0.45f});
-            ufoMeshData.Ks.push_back(Vec3f{0.8f, 0.8f, 0.9f});
-            ufoMeshData.Ke.push_back(Vec3f{0.0f, 0.0f, 0.0f});
-            ufoMeshData.Ns.push_back(64.0f);
-        }
-        else
-        {
-            // Top glass-like
-            ufoMeshData.colors.push_back(Vec3f{0.2f, 0.4f, 0.8f});
-            ufoMeshData.Ka.push_back(Vec3f{0.1f, 0.2f, 0.4f});
-            ufoMeshData.Kd.push_back(Vec3f{0.3f, 0.5f, 0.9f});
-            ufoMeshData.Ks.push_back(Vec3f{0.9f, 0.9f, 1.0f});
-            ufoMeshData.Ke.push_back(Vec3f{0.0f, 0.0f, 0.0f});
-            ufoMeshData.Ns.push_back(128.0f);
-        }
-    }
+	// NOW create SimpleMeshData and assign the populated vectors
+	SimpleMeshData ufoMeshData;
+	ufoMeshData.positions = ufoPositions;
+	ufoMeshData.normals = ufoNormals;
 
-    MeshGL ufoMesh;
-    GLuint ufoVAO = create_vao(ufoMeshData);
-    ufoMesh.vao = ufoVAO;
-    ufoMesh.vertexCount = static_cast<GLsizei>(ufoPositions.size());
+
+	 ufoMeshData.Ka.reserve(ufoPositions.size());
+		ufoMeshData.Kd.reserve(ufoPositions.size());
+		ufoMeshData.Ks.reserve(ufoPositions.size());
+		ufoMeshData.Ke.reserve(ufoPositions.size());
+		ufoMeshData.Ns.reserve(ufoPositions.size());
+		ufoMeshData.colors.reserve(ufoPositions.size());  // Need colors too!
+	
+		for (size_t i = 0; i < ufoPositions.size(); ++i)
+		{
+			// --- Bulbs: emissive RGB ---
+			if (i >= static_cast<size_t>(ufoBulbsStart) &&
+				i <  static_cast<size_t>(ufoBulbsStart + ufoBulbsCount))
+			{
+				// Divide bulbs into 3 equal groups (one per box)
+				size_t bulbIndex = i - static_cast<size_t>(ufoBulbsStart);
+				size_t groupSize = ufoBulbsCount / 3;
+	
+				Vec3f Ka, Kd, Ks, Ke;
+				if (bulbIndex < groupSize)
+				{
+					// Green bulb
+					Ka = {0.0f, 0.2f, 0.0f};
+					Kd = {0.0f, 0.5f, 0.0f};
+					Ks = {0.0f, 0.3f, 0.0f};
+					Ke = {0.0f, 1.0f, 0.0f};
+				}
+				else if (bulbIndex < 2 * groupSize)
+				{
+					// Red bulb
+					Ka = {0.2f, 0.0f, 0.0f};
+					Kd = {0.5f, 0.0f, 0.0f};
+					Ks = {0.3f, 0.0f, 0.0f};
+					Ke = {1.0f, 0.0f, 0.0f};
+				}
+				
+				else
+				{
+					// Blue bulb
+					Ka = {0.0f, 0.1f, 0.2f};
+					Kd = {0.0f, 0.35f, 0.5f};
+					Ks = {0.0f, 0.2f, 0.3f};
+					Ke = {0.0f, 0.7f, 1.0f};
+				}
+	
+				ufoMeshData.Ka.push_back(Ka);
+				ufoMeshData.Kd.push_back(Kd);
+				ufoMeshData.Ks.push_back(Ks);
+				ufoMeshData.Ke.push_back(Ke);
+				ufoMeshData.Ns.push_back(32.0f);
+				ufoMeshData.colors.push_back({1.0f, 1.0f, 1.0f});
+			}
+			// --- Engine / booster: metallic silver ---
+			else if (i >= static_cast<size_t>(ufoEngineStart) &&
+					 i <  static_cast<size_t>(ufoEngineStart + ufoEngineCount))
+			{ufoMeshData.Ka.push_back({0.10f, 0.10f, 0.10f});
+				ufoMeshData.Kd.push_back({0.70f, 0.70f, 0.70f});
+				ufoMeshData.Ks.push_back({1.00f, 1.00f, 1.00f});  // very shiny
+				ufoMeshData.Ke.push_back({0.0f,  0.0f,  0.0f});
+				ufoMeshData.Ns.push_back(256.0f);                 // very tight highlight
+				ufoMeshData.colors.push_back({1.0f, 1.0f, 1.0f});
+				// ufoMeshData.Ka.push_back({0.30f, 0.30f, 0.30f});
+				// ufoMeshData.Kd.push_back({0.70f, 0.70f, 0.70f});
+				// ufoMeshData.Ks.push_back({1.00f, 1.00f, 1.00f});
+				// ufoMeshData.Ke.push_back({0.0f,  0.0f,  0.0f});
+				// ufoMeshData.Ns.push_back(128.0f);
+				// ufoMeshData.colors.push_back({1.0f, 1.0f, 1.0f});
+			}
+			// --- Fins: pink ---
+			else if (i >= static_cast<size_t>(ufoFinsStart) &&
+					 i <  static_cast<size_t>(ufoFinsStart + ufoFinsCount))
+			{	ufoMeshData.Ka.push_back({0.05f, 0.0f, 0.02f});   // small ambient
+				ufoMeshData.Kd.push_back({1.00f, 0.00f, 0.80f});  // full-on pink
+				ufoMeshData.Ks.push_back({0.9f, 0.6f, 0.9f}); 
+				// ufoMeshData.Ka.push_back({0.30f, 0.05f, 0.15f});
+				// ufoMeshData.Kd.push_back({1.00f, 0.20f, 0.80f});
+				// ufoMeshData.Ks.push_back({0.90f, 0.50f, 0.90f});
+				ufoMeshData.Ke.push_back({0.0f,  0.0f,  0.0f});
+				ufoMeshData.Ns.push_back(96.0f);
+				ufoMeshData.colors.push_back({1.0f, 1.0f, 1.0f});
+			}
+			// --- Top cone + antenna: pink ---
+			else if (i >= static_cast<size_t>(ufoTopStart) &&
+					 i <  static_cast<size_t>(ufoTopStart + ufoTopCount))
+			{
+			ufoMeshData.Ka.push_back({0.05f, 0.0f, 0.02f});   // small ambient
+				ufoMeshData.Kd.push_back({1.00f, 0.00f, 0.80f});  // full-on pink
+				ufoMeshData.Ks.push_back({0.9f, 0.6f, 0.9f}); 
+				// ufoMeshData.Ka.push_back({0.30f, 0.05f, 0.15f});
+				// ufoMeshData.Kd.push_back({1.00f, 0.20f, 0.80f});
+				// ufoMeshData.Ks.push_back({0.90f, 0.50f, 0.90f});
+				ufoMeshData.Ke.push_back({0.0f,  0.0f,  0.0f});
+				ufoMeshData.Ns.push_back(96.0f);
+				ufoMeshData.colors.push_back({1.0f, 1.0f, 1.0f});
+		}
+		// --- Main body cylinder: glossy shiny black ---
+		else
+		{
+			// Tiny ambient so the silhouette isn't completely lost
+			ufoMeshData.Ka.push_back({0.9f, 0.9f, 0.9f});
+		
+			// Very dark diffuse so it still reads as black,
+			// but can pick up a bit of coloured light
+			ufoMeshData.Kd.push_back({1.0f, 1.0f, 1.0f});
+		
+			// Strong specular to get a clear glossy highlight
+			ufoMeshData.Ks.push_back({1.0f, 1.0f, 1.0f});
+		
+			// No self-emission
+			ufoMeshData.Ke.push_back({0.0f, 0.0f, 0.0f});
+		
+			// Lower shininess so the highlight is wider and more visible
+			ufoMeshData.Ns.push_back(128.0f);
+		
+			// White vertex colour so the lighting terms do all the work
+			ufoMeshData.colors.push_back({1.0f, 1.0f, 1.0f});
+		}
+	}
+	
+MeshGL ufoMesh;	// Create VAO with material properties (uses the same function as landing pads)
+	GLuint ufoVAO = create_vao(ufoMeshData);
+	ufoMesh.vao = ufoVAO;
+	ufoMesh.vertexCount = static_cast<GLsizei>(ufoPositions.size());
 
     GLuint terrainTexture =
         load_texture_2d( (ASSETS + terrainMeshData.texture_filepath).c_str() );
@@ -871,6 +985,217 @@ else
     // Restore full viewport for next frame
     glViewport(0, 0, static_cast<int>(fbwidth), static_cast<int>(fbheight));
 }
+        // ===== Build VIEW based on camera mode (your nicer version) =====
+        Mat44f view;
+        Vec3f camPosForLighting = gCamera.position;
+
+        switch (gCameraMode)
+        {
+        case CameraMode::Free:
+        {
+            camPosForLighting = gCamera.position;
+
+            view =
+                make_rotation_x(-gCamera.pitch) *
+                make_rotation_y(gCamera.yaw) *
+                make_translation(-gCamera.position);
+            break;
+        }
+        case CameraMode::Chase:
+        {
+            Vec3f worldUp{ 0.f, 1.f, 0.f };
+
+            Vec3f f = forwardWS;
+            if (!gUfoAnim.active)
+            {
+                f = Vec3f{ 0.f, 0.f, -1.f };
+            }
+
+            Vec3f fHoriz{ f.x, 0.f, f.z };
+            float len = length(fHoriz);
+            if (len < 1e-3f)
+            {
+                fHoriz = Vec3f{ 0.f, 0.f, -1.f };
+            }
+            else
+            {
+                fHoriz = fHoriz / len;
+            }
+
+            float distBack   = 7.0f;
+            float heightUp   = 1.0f;
+            float sideOffset = -2.0f;
+
+            Vec3f right = normalize(cross(worldUp, fHoriz));
+
+            Vec3f camPos =
+                ufoPos
+                - fHoriz * distBack
+                + worldUp * heightUp
+                + right   * sideOffset;
+
+            Vec3f camTarget = ufoPos + fHoriz * 2.0f;
+            Vec3f dir       = normalize(camTarget - camPos);
+
+            float camPitch = std::asin(dir.y);
+            float camYaw   = std::atan2(dir.x, -dir.z);
+
+            camPosForLighting = camPos;
+
+            view =
+                make_rotation_x(-camPitch) *
+                make_rotation_y(camYaw) *
+                make_translation(-camPos);
+            break;
+        }
+        case CameraMode::Ground:
+        {
+            Vec3f camPos{
+                landingPadPos1.x + 10.f,
+                landingPadPos1.y + 1.f,
+                landingPadPos1.z + 12.f
+            };
+
+            Vec3f camTarget = ufoPos;
+            Vec3f dir       = normalize(camTarget - camPos);
+
+            float camPitch = std::asin(dir.y);
+            float camYaw   = std::atan2(dir.x, -dir.z);
+
+            camPosForLighting = camPos;
+
+            view =
+                make_rotation_x(-camPitch) *
+                make_rotation_y(camYaw) *
+                make_translation(-camPos);
+            break;
+        }
+        }
+
+        Mat44f viewProj   = proj * view;
+        Mat44f terrainMvp = viewProj * model;
+        Mat44f ufoMvp     = viewProj * ufoModel;
+
+        Mat33f normalMatrix = mat44_to_mat33( transpose(invert(model)) );
+
+        // ===== DRAW =====
+        OGL_CHECKPOINT_DEBUG();
+
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        GLuint progId = terrainProgram.programId();
+        glUseProgram(progId);
+
+        // Lighting
+        glUniform3fv(2, 1, &lightDir[0]);
+        glUniform3fv(4, 1, &ambientColor[0]);
+
+        glUniformMatrix3fv(
+            1,
+            1, GL_TRUE, normalMatrix.v
+        );
+
+        // Camera position (use actual camera)
+        glUniform3fv(6, 1, &camPosForLighting.x);
+
+        // Tell shader to use the texture for terrain
+        glUniform1i(17, 1);  // uUseTexture = 1
+
+        // Point lights
+        Vec3f pointLightPositions[3] = {
+            gPointLights[0].position,
+            gPointLights[1].position,
+            gPointLights[2].position
+        };
+        Vec3f pointLightColorsArr[3] = {
+            gPointLights[0].color,
+            gPointLights[1].color,
+            gPointLights[2].color
+        };
+        GLint pointLightEnabledArr[3] = {
+            gPointLights[0].enabled ? 1 : 0,
+            gPointLights[1].enabled ? 1 : 0,
+            gPointLights[2].enabled ? 1 : 0
+        };
+
+        glUniform3fv(7, 3, &pointLightPositions[0].x);
+        glUniform3fv(10, 3, &pointLightColorsArr[0].x);
+        glUniform1iv(13, 3, pointLightEnabledArr);
+
+        glUniform1i(16, gDirectionalLightEnabled ? 1 : 0);
+
+        // ----- Terrain -----
+        glUniformMatrix4fv(0, 1, GL_TRUE, terrainMvp.v);
+        glUniformMatrix4fv(18, 1, GL_TRUE, model.v);
+
+        glUniform3fv(3, 1, &baseColor[0]);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, terrainTexture);
+        glUniform1i(5, 0);
+
+        glBindVertexArray(terrainVAO);
+        glDrawArrays(GL_TRIANGLES, 0, terrainMeshData.positions.size());
+        glBindVertexArray(0);
+
+// ====================
+// Draw UFO
+// ====================
+glUniformMatrix3fv(
+	1,  // location = 1 in the shader
+	1, GL_TRUE, normalMatrix.v
+);
+
+glUniformMatrix4fv(18, 1, GL_TRUE, ufoModel.v);   // uModel at location 18
+
+        glBindVertexArray(ufoMesh.vao);
+
+        // No texture: solid colour
+        glUniform1i(17, 0);  // uUseTexture = 0
+
+// Set base colour to white so the material colours show as-is
+Vec3f ufoBaseColor{ 1.0f, 1.0f, 1.0f };
+glUniform3fv(3, 1, &ufoBaseColor[0]);
+
+// Single draw: all parts are handled via per-vertex materials
+glUniformMatrix4fv(0, 1, GL_TRUE, ufoMvp.v);
+glDrawArrays(GL_TRIANGLES, 0, ufoMesh.vertexCount);
+
+        glBindVertexArray(0);
+
+        // ----- Landing pads -----
+        GLuint landingProgId = landingProgram.programId();
+        glUseProgram(landingProgId);
+
+        glUniformMatrix3fv(
+            1,
+            1, GL_TRUE, normalMatrix.v
+        );
+
+        glUniform3fv(2, 1, &lightDir[0]);
+        glUniform3fv(4, 1, &ambientColor[0]);
+
+        // Use same camera position as main view
+        glUniform3fv(6, 1, &camPosForLighting.x);
+
+        glUniform3fv(7, 3, &pointLightPositions[0].x);
+        glUniform3fv(10, 3, &pointLightColorsArr[0].x);
+        glUniform1iv(13, 3, pointLightEnabledArr);
+        glUniform1i(16, gDirectionalLightEnabled ? 1 : 0);
+
+        glBindVertexArray(landingVao);
+
+        Mat44f lpModel1 = make_translation(landingPadPos1);
+        glUniformMatrix4fv(0, 1, GL_TRUE, viewProj.v);
+        glUniformMatrix4fv(17, 1, GL_TRUE, lpModel1.v);
+        glDrawArrays(GL_TRIANGLES, 0, landingMeshData.positions.size());
+
+        Mat44f lpModel2 = make_translation(landingPadPos2);
+        glUniformMatrix4fv(0, 1, GL_TRUE, viewProj.v);
+        glUniformMatrix4fv(17, 1, GL_TRUE, lpModel2.v);
+        glDrawArrays(GL_TRIANGLES, 0, landingMeshData.positions.size());
+
+        glBindVertexArray(0);
 
 OGL_CHECKPOINT_DEBUG();
 glfwSwapBuffers( window );
