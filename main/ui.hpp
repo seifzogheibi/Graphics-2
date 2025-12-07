@@ -55,7 +55,9 @@ private:
     GLuint mVBO;
     GLuint mFontTexture;
     
-    std::vector<float> mVertices;  // pos(2) + texcoord(2) + color(4)
+    std::vector<float> mQuadVertices;  // Non-textured (backgrounds, outlines)
+    std::vector<float> mTextVertices;  // Textured (font glyphs)
+
 };
 
 #endif // UI_HPP_INCLUDED

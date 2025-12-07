@@ -13,9 +13,13 @@ namespace
     
     int glfonsRenderCreate(void* userPtr, int width, int height)
     {
+        
         auto* gl = static_cast<GLFONScontext*>(userPtr);
+    
         
         glGenTextures(1, &gl->texture);
+        std::print("glfonsRenderCreate: Created texture ID {} ({}x{})\n", 
+               gl->texture, width, height);
         glBindTexture(GL_TEXTURE_2D, gl->texture);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, width, height, 0, GL_RED, GL_UNSIGNED_BYTE, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -37,19 +41,36 @@ namespace
     }
     
     void glfonsRenderUpdate(void* userPtr, int* rect, const unsigned char* data)
-    {
-        auto* gl = static_cast<GLFONScontext*>(userPtr);
-        
-        int w = rect[2] - rect[0];
-        int h = rect[3] - rect[1];
-        
-        if (w <= 0 || h <= 0) return;
-        
-        glBindTexture(GL_TEXTURE_2D, gl->texture);
-        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, rect[0], rect[1], w, h, GL_RED, GL_UNSIGNED_BYTE, data);
-        glBindTexture(GL_TEXTURE_2D, 0);
-    }
+{
+    std::print("glfonsRenderUpdate called: rect=[{},{},{},{}]\n", 
+               rect[0], rect[1], rect[2], rect[3]);
+
+    auto* gl = static_cast<GLFONScontext*>(userPtr);
+    
+    int x = rect[0];
+    int y = rect[1];
+    int w = rect[2] - rect[0];
+    int h = rect[3] - rect[1];
+    
+    if (w <= 0 || h <= 0) return;
+    
+    glBindTexture(GL_TEXTURE_2D, gl->texture);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    
+    // IMPORTANT: Set the row length to the full atlas width (512)
+    // because 'data' points to the full atlas, not just the updated region
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 512);
+    
+    // Offset into the data for the updated region
+    const unsigned char* subData = data + x + (y * 512);
+    
+    glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, w, h, GL_RED, GL_UNSIGNED_BYTE, subData);
+    
+    // Reset row length to default
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    
+    glBindTexture(GL_TEXTURE_2D, 0);
+}
     
     void glfonsRenderDraw(void* userPtr, const float* verts, const float* tcoords, 
                           const unsigned int* colors, int nverts)
@@ -170,7 +191,8 @@ void UIRenderer::setWindowSize(int width, int height)
 
 void UIRenderer::beginFrame()
 {
-    mVertices.clear();
+    mQuadVertices.clear();
+    mTextVertices.clear();
     std::print("UIRenderer::beginFrame() - vertices cleared\n");
 }
 
@@ -194,6 +216,10 @@ void UIRenderer::renderText(float x, float y, const char* text, float size, Vec4
                bounds[2] - bounds[0] + 2*padding, bounds[3] - bounds[1] + 2*padding,
                Vec4f{0.0f, 0.0f, 0.0f, 0.7f});
     
+    // IMPORTANT: Call fonsDrawText to trigger glyph rasterization and texture update
+    // We don't use its rendering, but it populates the font atlas
+    fonsDrawText(mFontContext, x, y, text, nullptr);
+
     // Get quads for each character
     FONStextIter iter;
     FONSquad quad;
@@ -214,7 +240,7 @@ void UIRenderer::renderText(float x, float y, const char* text, float size, Vec4
             quad.x1, quad.y0,  quad.s1, quad.t0,  color.x, color.y, color.z, color.w,
         };
         
-        mVertices.insert(mVertices.end(), std::begin(verts), std::end(verts));
+        mTextVertices.insert(mTextVertices.end(), std::begin(verts), std::end(verts));
     }
 }
 
@@ -291,6 +317,10 @@ bool UIRenderer::renderButton(Button& button, double mouseX, double mouseY, bool
     fonsSetAlign(mFontContext, FONS_ALIGN_CENTER | FONS_ALIGN_MIDDLE);
     
     Vec4f textColor{1.0f, 1.0f, 1.0f, 1.0f};
+
+    // IMPORTANT: Call fonsDrawText to trigger glyph rasterization and texture update
+    fonsDrawText(mFontContext, button.x, button.y, button.label.c_str(), nullptr);
+    
     
     FONStextIter iter;
     FONSquad quad;
@@ -309,7 +339,7 @@ bool UIRenderer::renderButton(Button& button, double mouseX, double mouseY, bool
             quad.x1, quad.y0,  quad.s1, quad.t0,  textColor.x, textColor.y, textColor.z, textColor.w,
         };
         
-        mVertices.insert(mVertices.end(), std::begin(verts), std::end(verts));
+        mTextVertices.insert(mTextVertices.end(), std::begin(verts), std::end(verts));
     }
     
     return wasClicked;
@@ -328,15 +358,17 @@ void UIRenderer::renderQuad(float x, float y, float w, float h, Vec4f color)
         x+w,   y,      0,0,  color.x, color.y, color.z, color.w,
     };
     
-    mVertices.insert(mVertices.end(), std::begin(verts), std::end(verts));
+    mQuadVertices.insert(mQuadVertices.end(), std::begin(verts), std::end(verts));
 }
+
+
 
 void UIRenderer::endFrame()
 {
     std::print("=== UIRenderer::endFrame() START ===\n");
-    std::print("Vertex count: {}\n", mVertices.size());
+    std::print("Quad vertices: {}, Text vertices: {}\n", mQuadVertices.size(), mTextVertices.size());
     
-    if (mVertices.empty())
+    if (mQuadVertices.empty() && mTextVertices.empty())
     {
         std::print("No vertices to render!\n");
         return;
@@ -350,17 +382,12 @@ void UIRenderer::endFrame()
     GLboolean wasCullFaceEnabled = glIsEnabled(GL_CULL_FACE);
     GLboolean wasSRGBEnabled = glIsEnabled(GL_FRAMEBUFFER_SRGB);
     
-    std::print("Previous GL state - Blend: {}, Depth: {}, Cull: {}, SRGB: {}\n", 
-           wasBlendEnabled, wasDepthTestEnabled, wasCullFaceEnabled, wasSRGBEnabled);
-    
     // Setup for 2D rendering
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);
     glDisable(GL_FRAMEBUFFER_SRGB);
-    
-    std::print("Set GL state for UI rendering\n");
     
     // Orthographic projection
     Mat44f projection{};
@@ -371,42 +398,45 @@ void UIRenderer::endFrame()
     projection[0,3] = -1.0f;
     projection[1,3] = 1.0f;
     
-    std::print("Projection matrix created\n");
-    
-    GLuint progId = mShader.programId();
-    std::print("Shader program ID: {}\n", progId);
-    
-    glUseProgram(progId);
-    
-    // Check for errors after using program
-    GLenum err = glGetError();
-    if (err != GL_NO_ERROR)
-        std::print("ERROR after glUseProgram: 0x{:X}\n", err);
-    
+    glUseProgram(mShader.programId());
     glUniformMatrix4fv(0, 1, GL_TRUE, projection.v);
     
-    err = glGetError();
-    if (err != GL_NO_ERROR)
-        std::print("ERROR after uniform matrix: 0x{:X}\n", err);
+    glBindVertexArray(mVAO);
     
-    // Bind font texture
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, mFontTexture);
-    std::print("Font texture ID: {}\n", mFontTexture);
+    // === PASS 1: Render non-textured quads (backgrounds, outlines) ===
+if (!mQuadVertices.empty())
+    {
+        glUniform1i(2, 0);  // uUseTexture = 0 (no texture)
+        
+        glBindBuffer(GL_ARRAY_BUFFER, mVBO);
+        glBufferData(GL_ARRAY_BUFFER, mQuadVertices.size() * sizeof(float), 
+                     mQuadVertices.data(), GL_STREAM_DRAW);
+        
+        int quadVertexCount = mQuadVertices.size() / 8;
+        glDrawArrays(GL_TRIANGLES, 0, quadVertexCount);
+        std::print("  Drew {} quad vertices\n", quadVertexCount);
+    }    
+    // === PASS 2: Render textured quads (text glyphs) ===
+   
+
+     if (!mTextVertices.empty())
+    {
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, mFontTexture);
+        glUniform1i(1, 0);  // uFontTexture = texture unit 0
+        glUniform1i(2, 1);  // uUseTexture = 1 (use texture)
+        
+        glBindBuffer(GL_ARRAY_BUFFER, mVBO);
+        glBufferData(GL_ARRAY_BUFFER, mTextVertices.size() * sizeof(float), 
+                     mTextVertices.data(), GL_STREAM_DRAW);
+        
+        int textVertexCount = mTextVertices.size() / 8;
+        glDrawArrays(GL_TRIANGLES, 0, textVertexCount);
+        std::print("  Drew {} text vertices\n", textVertexCount);
+    }
     
-    glUniform1i(1, 0);  // Texture unit 0
-    glUniform1i(2, 1);  // Use texture = 1
     
-    err = glGetError();
-    if (err != GL_NO_ERROR)
-        std::print("ERROR after texture uniforms: 0x{:X}\n", err);
-    
-    std::print("About to upload vertices...\n");
-    uploadVertices();
-    
-    err = glGetError();
-    if (err != GL_NO_ERROR)
-        std::print("ERROR after uploadVertices: 0x{:X}\n", err);
+    glBindVertexArray(0);
     
     // Restore GL state
     if (!wasBlendEnabled) glDisable(GL_BLEND);
@@ -431,17 +461,17 @@ void UIRenderer::uploadVertices()
     if (err != GL_NO_ERROR)
         std::print("  ERROR after glBindBuffer: 0x{:X}\n", err);
     
-    size_t byteSize = mVertices.size() * sizeof(float);
-    std::print("  Uploading {} bytes ({} floats, {} vertices)\n", 
-               byteSize, mVertices.size(), mVertices.size() / 8);
+    size_t byteSize = mTextVertices.size() * sizeof(float);
+    std::print("  Uploading {} bytes ({} floats, {} text vertices)\n", 
+               byteSize, mTextVertices.size(), mTextVertices.size() / 8);
     
-    glBufferData(GL_ARRAY_BUFFER, byteSize, mVertices.data(), GL_STREAM_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, byteSize, mTextVertices.data(), GL_STREAM_DRAW);
     err = glGetError();
     if (err != GL_NO_ERROR)
         std::print("  ERROR after glBufferData: 0x{:X}\n", err);
     
-    int vertexCount = mVertices.size() / 8;
-    std::print("  Drawing {} vertices ({} triangles)\n", vertexCount, vertexCount / 3);
+    int vertexCount = mTextVertices.size() / 8;
+    std::print("  Drawing {} text vertices ({} triangles)\n", vertexCount, vertexCount / 3);
     
     glDrawArrays(GL_TRIANGLES, 0, vertexCount);
     err = glGetError();
