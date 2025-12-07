@@ -28,6 +28,7 @@
 #include <vector>
 #include "ui.hpp"
 
+
 #define ASSETS "assets/cw2/"
 
 namespace
@@ -89,6 +90,31 @@ namespace
         double lastMouseY = 0.0;
     };
 
+// ----------------------
+// Particle system
+// ----------------------
+struct Particle
+{
+    Vec3f pos;
+    Vec3f vel;
+    float life;    // seconds remaining; <= 0 means "dead"
+};
+
+constexpr int kMaxParticles = 70000;   // tweak if you like
+
+Particle gParticles[kMaxParticles];
+int gAliveCount = 0;                  // how many are alive this frame
+
+// GPU resources for particles
+GLuint gParticleVAO = 0;
+GLuint gParticleVBO = 0;
+GLuint gParticleTexture = 0;
+
+// For emission
+float gEmissionAccumulator = 0.0f;    // for rate * dt
+float gEmissionRate        = 1000.0f;  // particles per second (tweak)
+
+
     // ===== 1.8: camera modes =====
     enum class CameraMode
     {
@@ -110,6 +136,18 @@ namespace
 
     VehicleAnim gUfoAnim;
 
+	// particle system helper: find a free particle slot
+	int alloc_particle()
+{
+    for (int i = 0; i < kMaxParticles; ++i)
+    {
+        if (gParticles[i].life <= 0.0f)
+            return i;
+    }
+    return -1;
+}
+
+
     // Simple cubic Bézier in 3D (not actually used in this version,
     // but kept in case needed)
     Vec3f bezier3(
@@ -130,13 +168,8 @@ namespace
             (3.f * it  * t2) * C +
             (t2 * t)        * D;
     }
-
-    // Task 1.9
-    // Split screen state
-    bool gSplitScreenEnabled = false;
-    CameraMode gCameraMode2 = CameraMode::Chase;  // Second view's camera mode
-
-    struct PointLight
+	
+	struct PointLight
     {
         Vec3f position;
         Vec3f color;
@@ -145,6 +178,16 @@ namespace
 
     PointLight gPointLights[3];
     bool gDirectionalLightEnabled = true;
+
+    // Task 1.9
+    // Split screen state
+    bool gSplitScreenEnabled = false;
+    CameraMode gCameraMode2 = CameraMode::Chase;  // Second view's camera mode
+
+    // 1.11 - Mouse state for UI
+    double gMouseX = 0.0;
+    double gMouseY = 0.0;
+    bool gMouseLeftDown = false;
 
     // Compute view matrix for a given camera mode
     // Returns both the view matrix and camera position (for lighting)
@@ -254,7 +297,8 @@ namespace
         SimpleMeshData const& landingMeshData,
         ShaderProgram const& landingProgram,
         Vec3f const& landingPadPos1,
-        Vec3f const& landingPadPos2
+        Vec3f const& landingPadPos2,
+        ShaderProgram const& particleProgram
     )
     {
         Mat44f terrainMvp = viewProj * model;
@@ -346,14 +390,52 @@ namespace
         glDrawArrays(GL_TRIANGLES, 0, landingMeshData.positions.size());
 
         glBindVertexArray(0);
+
+        // ====================
+        // Draw PARTICLES (exhaust)
+        // ====================
+        if (gAliveCount > 0)
+        {
+            GLuint particleProgId = particleProgram.programId();
+            glUseProgram(particleProgId);
+
+            // Additive blending for exhaust
+            // glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);   // override default
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_ONE, GL_ONE);
+            glDepthMask(GL_FALSE);
+
+            // Keep depth test, but disable depth writes so particles don't overwrite each other
+            glDepthMask(GL_FALSE);
+
+            // uViewProj at location 0
+            glUniformMatrix4fv(0, 1, GL_TRUE, viewProj.v);
+
+            // uPointSize at location 1 (pixels)
+            // glUniform1f(1, 16.0f);   // tweak 24–48 so each particle covers multiple pixels
+            glUniform1f(1, 2.f);              // tweak this value
+            glUniform3fv(4, 1, &camPosForLighting.x);
+
+            // uColor at location 2 (tint)
+            Vec3f exhaustColor{ 0.9f, 0.9f, 1.0f }; // bluish-white exhaust
+            glUniform3fv(2, 1, &exhaustColor.x);
+
+            // uTexture at location 3
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, gParticleTexture);
+            glUniform1i(3, 0);
+
+            glBindVertexArray(gParticleVAO);
+            glDrawArrays(GL_POINTS, 0, gAliveCount);
+            glBindVertexArray(0);
+
+            // Restore state for any later draws
+            glDepthMask(GL_TRUE);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        }
+
+        // 1.9 END
     }
-    // 1.9 END
-        // 1.11
-        // Mouse state for UI
-        double gMouseX = 0.0;
-        double gMouseY = 0.0;
-        bool gMouseLeftDown = false;
-        // 1.11 END
 
     // Forward declarations for extra callbacks
     void glfw_callback_mouse_button_( GLFWwindow* , int , int , int );
@@ -435,6 +517,13 @@ int main() try
     glEnable(GL_CULL_FACE);
     glEnable(GL_FRAMEBUFFER_SRGB);
     glClearColor(0.2f, 0.2f, 0.2f, 1.f);
+
+	// For point sprites with programmable size
+glEnable(GL_PROGRAM_POINT_SIZE);
+
+// Blending (we’ll switch blend func around particles draw)
+glEnable(GL_BLEND);
+
 
     OGL_CHECKPOINT_ALWAYS();
 
@@ -656,6 +745,49 @@ MeshGL ufoMesh;	// Create VAO with material properties (uses the same function a
     gPointLights[2].enabled = true;
     gDirectionalLightEnabled = true;
 
+    // ---------------------
+    // Particle system setup
+    // ---------------------
+    ShaderProgram particleProgram({
+        { GL_VERTEX_SHADER,   "assets/cw2/particle.vert" },
+        { GL_FRAGMENT_SHADER, "assets/cw2/particle.frag" }
+    });
+
+    // Allocate particle buffers
+    glGenVertexArrays(1, &gParticleVAO);
+    glGenBuffers(1,      &gParticleVBO);
+
+    glBindVertexArray(gParticleVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, gParticleVBO);
+
+    // reserve max particles (positions only)
+    glBufferData(
+        GL_ARRAY_BUFFER,
+        kMaxParticles * sizeof(Vec3f),
+        nullptr,
+        GL_DYNAMIC_DRAW
+    );
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(
+        0, 3, GL_FLOAT, GL_FALSE,
+        sizeof(Vec3f),
+        (void*)0
+    );
+
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    // Load particle texture (RGBA with alpha)
+    gParticleTexture = load_texture_2d("assets/cw2/particle.png");
+
+    // Initialise all particles as dead
+    for (int i = 0; i < kMaxParticles; ++i)
+        gParticles[i].life = -1.0f;
+
+    gAliveCount = 0;
+    gEmissionAccumulator = 0.0f;
+
     OGL_CHECKPOINT_ALWAYS();
 
     // ========== MAIN LOOP ==========
@@ -824,6 +956,66 @@ MeshGL ufoMesh;	// Create VAO with material properties (uses the same function a
         gPointLights[1].position = ufoPos + lightOffset1;
         gPointLights[2].position = ufoPos + lightOffset2;
 
+
+		// ---------------------------------
+// Particle simulation (rocket exhaust)
+// ---------------------------------
+
+// Emit only when animation is active and not paused
+if (gUfoAnim.active && !gUfoAnim.paused)
+{
+    // Engine position: behind rocket along -forwardWS
+    Vec3f enginePos = ufoPos - forwardWS * 2.0f;  // tweak distance
+
+    // Particles to spawn this frame
+    gEmissionAccumulator += gEmissionRate * dt;
+    int toSpawn = static_cast<int>(gEmissionAccumulator);
+    if (toSpawn > 0)
+        gEmissionAccumulator -= static_cast<float>(toSpawn);
+
+    for (int n = 0; n < toSpawn; ++n)
+    {
+        int idx = alloc_particle();
+        if (idx < 0) break;
+
+        // small random offset
+        float rx = (std::rand() / float(RAND_MAX) - 0.5f) * 0.3f;
+        float ry = (std::rand() / float(RAND_MAX) - 0.5f) * 0.3f;
+        float rz = (std::rand() / float(RAND_MAX) - 0.5f) * 0.3f;
+
+        gParticles[idx].pos = enginePos + Vec3f{ rx, ry, rz };
+
+        // velocity mainly away from rocket
+        Vec3f baseVel = -forwardWS * 20.0f;
+        Vec3f jitter{
+            (std::rand() / float(RAND_MAX) - 0.5f) * 4.0f,
+            (std::rand() / float(RAND_MAX) - 0.5f) * 4.0f,
+            (std::rand() / float(RAND_MAX) - 0.5f) * 4.0f
+        };
+        gParticles[idx].vel = baseVel + jitter;
+
+        gParticles[idx].life = 1.0f + (std::rand() / float(RAND_MAX)) * 0.5f;
+    }
+}
+
+// Integrate motion – freeze when paused
+if (!gUfoAnim.paused)
+{
+    for (int i = 0; i < kMaxParticles; ++i)
+    {
+        if (gParticles[i].life > 0.0f)
+        {
+            gParticles[i].life -= dt;
+            if (gParticles[i].life > 0.0f)
+            {
+                gParticles[i].pos = gParticles[i].pos + gParticles[i].vel * dt;
+            }
+        }
+    }
+}
+
+
+
         // ===== Camera movement (free) =====
         float baseSpeed = 5.0f;
         if (gCamera.fast) baseSpeed *= 4.0f;
@@ -866,13 +1058,38 @@ MeshGL ufoMesh;	// Create VAO with material properties (uses the same function a
         );
 
         // Update button positions (bottom center)
-        float buttonY = fbheight - 60.0f;  // 60px from bottom
-        launchButton.x = fbwidth / 2.0f - 70.0f;  // Left button
+        float buttonY = fbheight - 60.0f;
+        launchButton.x = fbwidth / 2.0f - 70.0f;
         launchButton.y = buttonY;
-        resetButton.x = fbwidth / 2.0f + 70.0f;   // Right button
-        resetButton.y = buttonY;
+        resetButton.x  = fbwidth / 2.0f + 70.0f;
+        resetButton.y  = buttonY;
 
-        // After glClear and before OGL_CHECKPOINT_DEBUG at the end (around line 750, AFTER glfwSwapBuffers)
+		// ----------------------------
+// Upload alive particles to VBO
+// ----------------------------
+static Vec3f particlePositions[kMaxParticles];
+int alive = 0;
+
+for (int i = 0; i < kMaxParticles; ++i)
+{
+    if (gParticles[i].life > 0.0f)
+    {
+        particlePositions[alive++] = gParticles[i].pos;
+    }
+}
+gAliveCount = alive;
+
+if (gAliveCount > 0)
+{
+    glBindBuffer(GL_ARRAY_BUFFER, gParticleVBO);
+    glBufferSubData(
+        GL_ARRAY_BUFFER,
+        0,
+        gAliveCount * sizeof(Vec3f),
+        particlePositions
+    );
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
 
 
 // ===== DRAW =====
@@ -915,7 +1132,8 @@ if (!gSplitScreenEnabled)
         landingMeshData,
         landingProgram,
         landingPadPos1,
-        landingPadPos2
+        landingPadPos2,
+        particleProgram
     );
 }
 else
@@ -962,7 +1180,8 @@ else
         landingMeshData,
         landingProgram,
         landingPadPos1,
-        landingPadPos2
+        landingPadPos2,
+        particleProgram
     );
     
     // Right half
@@ -1001,13 +1220,14 @@ else
         landingMeshData,
         landingProgram,
         landingPadPos1,
-        landingPadPos2
+        landingPadPos2,
+        particleProgram
     );
     
     // Restore full viewport for next frame
     glViewport(0, 0, static_cast<int>(fbwidth), static_cast<int>(fbheight));
 }
-
+OGL_CHECKPOINT_DEBUG();
         // Render UI
         uiRenderer.setWindowSize(static_cast<int>(fbwidth), static_cast<int>(fbheight));
         uiRenderer.beginFrame();
@@ -1042,8 +1262,8 @@ else
         }
 
         uiRenderer.endFrame();
-
-glfwSwapBuffers( window );
+        
+        glfwSwapBuffers( window );
     }
 
     return 0;
