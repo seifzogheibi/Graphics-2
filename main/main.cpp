@@ -250,49 +250,163 @@ int main() try
     std::vector<Vec3f> ufoPositions;
     std::vector<Vec3f> ufoNormals;
 
-    int ufoBaseVertexCount = 0;
-    int ufoTopVertexCount  = 0;
+	// counts for base (all bottom parts) and top (nose + antenna)
+	int ufoBaseVertexCount = 0;
+	int ufoTopVertexCount  = 0;
 
-    buildUfoFlatArrays(
-        ufoPositions,
-        ufoNormals,
-        ufoBaseVertexCount,
-        ufoTopVertexCount
-    );
+	// sub-part ranges
+	int ufoBodyStart   = 0, ufoBodyCount   = 0;
+	int ufoEngineStart = 0, ufoEngineCount = 0;
+	int ufoFinsStart   = 0, ufoFinsCount   = 0;
+	int ufoBulbsStart  = 0, ufoBulbsCount  = 0;
+	int ufoTopStart    = 0, ufoTopCount    = 0;
 
-    // Build SimpleMeshData with materials for UFO
-    SimpleMeshData ufoMeshData;
-    ufoMeshData.positions = ufoPositions;
-    ufoMeshData.normals   = ufoNormals;
+	// Call buildUfoFlatArrays FIRST to populate the vectors
+	buildUfoFlatArrays(
+		ufoPositions,
+		ufoNormals,
+		ufoBaseVertexCount,
+		ufoTopVertexCount,
+		ufoBodyStart,
+		ufoBodyCount,
+		ufoEngineStart,
+		ufoEngineCount,
+		ufoFinsStart,
+		ufoFinsCount,
+		ufoBulbsStart,
+		ufoBulbsCount,
+		ufoTopStart,
+		ufoTopCount
+	);
 
-    for (size_t i = 0; i < ufoPositions.size(); ++i)
-    {
-        if (i < static_cast<size_t>(ufoBaseVertexCount))
-        {
-            // Base metallic
-            ufoMeshData.colors.push_back(Vec3f{0.3f, 0.3f, 0.35f});
-            ufoMeshData.Ka.push_back(Vec3f{0.2f, 0.2f, 0.25f});
-            ufoMeshData.Kd.push_back(Vec3f{0.4f, 0.4f, 0.45f});
-            ufoMeshData.Ks.push_back(Vec3f{0.8f, 0.8f, 0.9f});
-            ufoMeshData.Ke.push_back(Vec3f{0.0f, 0.0f, 0.0f});
-            ufoMeshData.Ns.push_back(64.0f);
-        }
-        else
-        {
-            // Top glass-like
-            ufoMeshData.colors.push_back(Vec3f{0.2f, 0.4f, 0.8f});
-            ufoMeshData.Ka.push_back(Vec3f{0.1f, 0.2f, 0.4f});
-            ufoMeshData.Kd.push_back(Vec3f{0.3f, 0.5f, 0.9f});
-            ufoMeshData.Ks.push_back(Vec3f{0.9f, 0.9f, 1.0f});
-            ufoMeshData.Ke.push_back(Vec3f{0.0f, 0.0f, 0.0f});
-            ufoMeshData.Ns.push_back(128.0f);
-        }
-    }
+	// NOW create SimpleMeshData and assign the populated vectors
+	SimpleMeshData ufoMeshData;
+	ufoMeshData.positions = ufoPositions;
+	ufoMeshData.normals = ufoNormals;
 
-    MeshGL ufoMesh;
-    GLuint ufoVAO = create_vao(ufoMeshData);
-    ufoMesh.vao = ufoVAO;
-    ufoMesh.vertexCount = static_cast<GLsizei>(ufoPositions.size());
+
+	 ufoMeshData.Ka.reserve(ufoPositions.size());
+		ufoMeshData.Kd.reserve(ufoPositions.size());
+		ufoMeshData.Ks.reserve(ufoPositions.size());
+		ufoMeshData.Ke.reserve(ufoPositions.size());
+		ufoMeshData.Ns.reserve(ufoPositions.size());
+		ufoMeshData.colors.reserve(ufoPositions.size());  // Need colors too!
+	
+		for (size_t i = 0; i < ufoPositions.size(); ++i)
+		{
+			// --- Bulbs: emissive RGB ---
+			if (i >= static_cast<size_t>(ufoBulbsStart) &&
+				i <  static_cast<size_t>(ufoBulbsStart + ufoBulbsCount))
+			{
+				// Divide bulbs into 3 equal groups (one per box)
+				size_t bulbIndex = i - static_cast<size_t>(ufoBulbsStart);
+				size_t groupSize = ufoBulbsCount / 3;
+	
+				Vec3f Ka, Kd, Ks, Ke;
+				if (bulbIndex < groupSize)
+				{
+					// Green bulb
+					Ka = {0.0f, 0.2f, 0.0f};
+					Kd = {0.0f, 0.5f, 0.0f};
+					Ks = {0.0f, 0.3f, 0.0f};
+					Ke = {0.0f, 1.0f, 0.0f};
+				}
+				else if (bulbIndex < 2 * groupSize)
+				{
+					// Red bulb
+					Ka = {0.2f, 0.0f, 0.0f};
+					Kd = {0.5f, 0.0f, 0.0f};
+					Ks = {0.3f, 0.0f, 0.0f};
+					Ke = {1.0f, 0.0f, 0.0f};
+				}
+				
+				else
+				{
+					// Blue bulb
+					Ka = {0.0f, 0.1f, 0.2f};
+					Kd = {0.0f, 0.35f, 0.5f};
+					Ks = {0.0f, 0.2f, 0.3f};
+					Ke = {0.0f, 0.7f, 1.0f};
+				}
+	
+				ufoMeshData.Ka.push_back(Ka);
+				ufoMeshData.Kd.push_back(Kd);
+				ufoMeshData.Ks.push_back(Ks);
+				ufoMeshData.Ke.push_back(Ke);
+				ufoMeshData.Ns.push_back(32.0f);
+				ufoMeshData.colors.push_back({1.0f, 1.0f, 1.0f});
+			}
+			// --- Engine / booster: metallic silver ---
+			else if (i >= static_cast<size_t>(ufoEngineStart) &&
+					 i <  static_cast<size_t>(ufoEngineStart + ufoEngineCount))
+			{ufoMeshData.Ka.push_back({0.10f, 0.10f, 0.10f});
+				ufoMeshData.Kd.push_back({0.70f, 0.70f, 0.70f});
+				ufoMeshData.Ks.push_back({1.00f, 1.00f, 1.00f});  // very shiny
+				ufoMeshData.Ke.push_back({0.0f,  0.0f,  0.0f});
+				ufoMeshData.Ns.push_back(256.0f);                 // very tight highlight
+				ufoMeshData.colors.push_back({1.0f, 1.0f, 1.0f});
+				// ufoMeshData.Ka.push_back({0.30f, 0.30f, 0.30f});
+				// ufoMeshData.Kd.push_back({0.70f, 0.70f, 0.70f});
+				// ufoMeshData.Ks.push_back({1.00f, 1.00f, 1.00f});
+				// ufoMeshData.Ke.push_back({0.0f,  0.0f,  0.0f});
+				// ufoMeshData.Ns.push_back(128.0f);
+				// ufoMeshData.colors.push_back({1.0f, 1.0f, 1.0f});
+			}
+			// --- Fins: pink ---
+			else if (i >= static_cast<size_t>(ufoFinsStart) &&
+					 i <  static_cast<size_t>(ufoFinsStart + ufoFinsCount))
+			{	ufoMeshData.Ka.push_back({0.05f, 0.0f, 0.02f});   // small ambient
+				ufoMeshData.Kd.push_back({1.00f, 0.00f, 0.80f});  // full-on pink
+				ufoMeshData.Ks.push_back({0.9f, 0.6f, 0.9f}); 
+				// ufoMeshData.Ka.push_back({0.30f, 0.05f, 0.15f});
+				// ufoMeshData.Kd.push_back({1.00f, 0.20f, 0.80f});
+				// ufoMeshData.Ks.push_back({0.90f, 0.50f, 0.90f});
+				ufoMeshData.Ke.push_back({0.0f,  0.0f,  0.0f});
+				ufoMeshData.Ns.push_back(96.0f);
+				ufoMeshData.colors.push_back({1.0f, 1.0f, 1.0f});
+			}
+			// --- Top cone + antenna: pink ---
+			else if (i >= static_cast<size_t>(ufoTopStart) &&
+					 i <  static_cast<size_t>(ufoTopStart + ufoTopCount))
+			{
+			ufoMeshData.Ka.push_back({0.05f, 0.0f, 0.02f});   // small ambient
+				ufoMeshData.Kd.push_back({1.00f, 0.00f, 0.80f});  // full-on pink
+				ufoMeshData.Ks.push_back({0.9f, 0.6f, 0.9f}); 
+				// ufoMeshData.Ka.push_back({0.30f, 0.05f, 0.15f});
+				// ufoMeshData.Kd.push_back({1.00f, 0.20f, 0.80f});
+				// ufoMeshData.Ks.push_back({0.90f, 0.50f, 0.90f});
+				ufoMeshData.Ke.push_back({0.0f,  0.0f,  0.0f});
+				ufoMeshData.Ns.push_back(96.0f);
+				ufoMeshData.colors.push_back({1.0f, 1.0f, 1.0f});
+		}
+		// --- Main body cylinder: glossy shiny black ---
+		else
+		{
+			// Tiny ambient so the silhouette isn't completely lost
+			ufoMeshData.Ka.push_back({0.9f, 0.9f, 0.9f});
+		
+			// Very dark diffuse so it still reads as black,
+			// but can pick up a bit of coloured light
+			ufoMeshData.Kd.push_back({1.0f, 1.0f, 1.0f});
+		
+			// Strong specular to get a clear glossy highlight
+			ufoMeshData.Ks.push_back({1.0f, 1.0f, 1.0f});
+		
+			// No self-emission
+			ufoMeshData.Ke.push_back({0.0f, 0.0f, 0.0f});
+		
+			// Lower shininess so the highlight is wider and more visible
+			ufoMeshData.Ns.push_back(128.0f);
+		
+			// White vertex colour so the lighting terms do all the work
+			ufoMeshData.colors.push_back({1.0f, 1.0f, 1.0f});
+		}
+	}
+	
+MeshGL ufoMesh;	// Create VAO with material properties (uses the same function as landing pads)
+	GLuint ufoVAO = create_vao(ufoMeshData);
+	ufoMesh.vao = ufoVAO;
+	ufoMesh.vertexCount = static_cast<GLsizei>(ufoPositions.size());
 
     GLuint terrainTexture =
         load_texture_2d( (ASSETS + terrainMeshData.texture_filepath).c_str() );
@@ -682,26 +796,28 @@ int main() try
         glDrawArrays(GL_TRIANGLES, 0, terrainMeshData.positions.size());
         glBindVertexArray(0);
 
-        // ----- UFO -----
-        glUniformMatrix3fv(
-            1,
-            1, GL_TRUE, normalMatrix.v
-        );
-        glUniformMatrix4fv(18, 1, GL_TRUE, ufoModel.v);
+// ====================
+// Draw UFO
+// ====================
+glUniformMatrix3fv(
+	1,  // location = 1 in the shader
+	1, GL_TRUE, normalMatrix.v
+);
+
+glUniformMatrix4fv(18, 1, GL_TRUE, ufoModel.v);   // uModel at location 18
 
         glBindVertexArray(ufoMesh.vao);
 
         // No texture: solid colour
         glUniform1i(17, 0);  // uUseTexture = 0
 
-        Vec3f bodyColor{ 0.2f, 0.28f, 0.38f };
-        glUniform3fv(3, 1, &bodyColor[0]);
-        glUniformMatrix4fv(0, 1, GL_TRUE, ufoMvp.v);
-        glDrawArrays(GL_TRIANGLES, 0, ufoBaseVertexCount);
+// Set base colour to white so the material colours show as-is
+Vec3f ufoBaseColor{ 1.0f, 1.0f, 1.0f };
+glUniform3fv(3, 1, &ufoBaseColor[0]);
 
-        Vec3f topColor{ 0.25f, 0.45f, 0.95f };
-        glUniform3fv(3, 1, &topColor[0]);
-        glDrawArrays(GL_TRIANGLES, ufoBaseVertexCount, ufoTopVertexCount);
+// Single draw: all parts are handled via per-vertex materials
+glUniformMatrix4fv(0, 1, GL_TRUE, ufoMvp.v);
+glDrawArrays(GL_TRIANGLES, 0, ufoMesh.vertexCount);
 
         glBindVertexArray(0);
 

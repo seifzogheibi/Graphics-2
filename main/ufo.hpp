@@ -10,5 +10,15 @@ void buildUfoFlatArrays(
     std::vector<Vec3f>& outPositions,
     std::vector<Vec3f>& outNormals,
     int& outBaseVertexCount,
-    int& outTopVertexCount
+    int& outTopVertexCount, 
+    int& outBodyStart,
+    int& outBodyCount,
+    int& outEngineStart,
+    int& outEngineCount,
+    int& outFinsStart,
+    int& outFinsCount,
+    int& outBulbsStart,
+    int& outBulbsCount,
+    int& outTopStart,
+    int& outTopCount
 );

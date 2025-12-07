@@ -20,7 +20,7 @@ struct SimpleMeshData
 	std::vector<Vec3f> Kd;
 	std::vector<Vec3f> Ke;
 	std::vector<Vec3f> Ks;
-
+	
 	bool has_texture() const
 	{
 		return !texture_filepath.empty();
