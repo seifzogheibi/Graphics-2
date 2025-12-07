@@ -46,6 +46,26 @@ namespace
         GLFWwindow* window;
     };
 
+        // ---------- Mesh / shader setup ----------
+
+    struct MeshGL
+    {
+        GLuint vao = 0;
+        GLuint vboPositions = 0;
+        GLuint vboNormals   = 0;
+        GLsizei vertexCount = 0;
+        GLuint vboTexcoords = 0;
+    };
+
+    struct MeshGLColored
+    {
+        GLuint vao = 0;
+        GLuint vboPositions = 0;
+        GLuint vboNormals   = 0;
+        GLuint vboColors    = 0;
+        GLsizei vertexCount = 0;
+    };
+
     struct Camera
     {
         Vec3f position{ 0.f, 5.f, 0.f };  // Start above the terrain
@@ -110,6 +130,11 @@ namespace
             (t2 * t)        * D;
     }
 
+    // Task 1.9
+    // Split screen state
+    bool gSplitScreenEnabled = false;
+    CameraMode gCameraMode2 = CameraMode::Chase;  // Second view's camera mode
+
     struct PointLight
     {
         Vec3f position;
@@ -119,6 +144,210 @@ namespace
 
     PointLight gPointLights[3];
     bool gDirectionalLightEnabled = true;
+
+    // Compute view matrix for a given camera mode
+    // Returns both the view matrix and camera position (for lighting)
+    struct CameraResult
+    {
+        Mat44f view;
+        Vec3f position;
+    };
+
+    CameraResult computeCameraView(
+        CameraMode mode,
+        Camera const& camera,
+        Vec3f const& ufoPos,
+        Vec3f const& forwardWS,
+        Vec3f const& landingPadPos1
+    )
+    {
+        CameraResult result;
+        
+        switch (mode)
+        {
+        case CameraMode::Free:
+        {
+            result.position = camera.position;
+            result.view = 
+                make_rotation_x(-camera.pitch) *
+                make_rotation_y(camera.yaw) *
+                make_translation(-camera.position);
+            break;
+        }
+        case CameraMode::Chase:
+        {
+            Vec3f worldUp{ 0.f, 1.f, 0.f };
+            Vec3f f = forwardWS;
+            
+            Vec3f fHoriz{ f.x, 0.f, f.z };
+            float len = length(fHoriz);
+            if (len < 1e-3f)
+                fHoriz = Vec3f{ 0.f, 0.f, -1.f };
+            else
+                fHoriz = fHoriz / len;
+
+            float distBack   = 7.0f;
+            float heightUp   = 1.0f;
+            float sideOffset = -2.0f;
+
+            Vec3f right = normalize(cross(worldUp, fHoriz));
+            Vec3f camPos = 
+                ufoPos
+                - fHoriz * distBack
+                + worldUp * heightUp
+                + right * sideOffset;
+
+            Vec3f camTarget = ufoPos + fHoriz * 2.0f;
+            Vec3f dir = normalize(camTarget - camPos);
+
+            float camPitch = std::asin(dir.y);
+            float camYaw = std::atan2(dir.x, -dir.z);
+
+            result.position = camPos;
+            result.view = 
+                make_rotation_x(-camPitch) *
+                make_rotation_y(camYaw) *
+                make_translation(-camPos);
+            break;
+        }
+        case CameraMode::Ground:
+        {
+            Vec3f camPos{
+                landingPadPos1.x + 10.f,
+                landingPadPos1.y + 1.f,
+                landingPadPos1.z + 12.f
+            };
+
+            Vec3f dir = normalize(ufoPos - camPos);
+            float camPitch = std::asin(dir.y);
+            float camYaw = std::atan2(dir.x, -dir.z);
+
+            result.position = camPos;
+            result.view = 
+                make_rotation_x(-camPitch) *
+                make_rotation_y(camYaw) *
+                make_translation(-camPos);
+            break;
+        }
+        }
+        
+        return result;
+    }
+
+        void renderScene(
+        Mat44f const& viewProj,
+        Vec3f const& camPosForLighting,
+        GLuint terrainVAO,
+        SimpleMeshData const& terrainMeshData,
+        GLuint terrainTexture,
+        ShaderProgram const& terrainProgram,
+        Mat44f const& model,
+        Vec3f const& lightDir,
+        Vec3f const& ambientColor,
+        Vec3f const& baseColor,
+        MeshGL const& ufoMesh,
+        int ufoBaseVertexCount,
+        int ufoTopVertexCount,
+        Mat44f const& ufoModel,
+        GLuint landingVao,
+        SimpleMeshData const& landingMeshData,
+        ShaderProgram const& landingProgram,
+        Vec3f const& landingPadPos1,
+        Vec3f const& landingPadPos2
+    )
+    {
+        Mat44f terrainMvp = viewProj * model;
+        Mat44f ufoMvp = viewProj * ufoModel;
+        Mat33f normalMatrix = mat44_to_mat33(transpose(invert(model)));
+
+        // Point light data
+        Vec3f pointLightPositions[3] = {
+            gPointLights[0].position,
+            gPointLights[1].position,
+            gPointLights[2].position
+        };
+        Vec3f pointLightColorsArr[3] = {
+            gPointLights[0].color,
+            gPointLights[1].color,
+            gPointLights[2].color
+        };
+        GLint pointLightEnabledArr[3] = {
+            gPointLights[0].enabled ? 1 : 0,
+            gPointLights[1].enabled ? 1 : 0,
+            gPointLights[2].enabled ? 1 : 0
+        };
+
+        // ----- TERRAIN -----
+        GLuint progId = terrainProgram.programId();
+        glUseProgram(progId);
+
+        glUniform3fv(2, 1, &lightDir.x);
+        glUniform3fv(4, 1, &ambientColor.x);
+        glUniformMatrix3fv(1, 1, GL_TRUE, normalMatrix.v);
+        glUniform3fv(6, 1, &camPosForLighting.x);
+        glUniform1i(17, 1);  // uUseTexture = 1
+        glUniform3fv(7, 3, &pointLightPositions[0].x);
+        glUniform3fv(10, 3, &pointLightColorsArr[0].x);
+        glUniform1iv(13, 3, pointLightEnabledArr);
+        glUniform1i(16, gDirectionalLightEnabled ? 1 : 0);
+
+        glUniformMatrix4fv(0, 1, GL_TRUE, terrainMvp.v);
+        glUniformMatrix4fv(18, 1, GL_TRUE, model.v);
+        glUniform3fv(3, 1, &baseColor.x);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, terrainTexture);
+        glUniform1i(5, 0);
+
+        glBindVertexArray(terrainVAO);
+        glDrawArrays(GL_TRIANGLES, 0, terrainMeshData.positions.size());
+        glBindVertexArray(0);
+
+        // ----- UFO -----
+        glUniformMatrix3fv(1, 1, GL_TRUE, normalMatrix.v);
+        glUniformMatrix4fv(18, 1, GL_TRUE, ufoModel.v);
+        glBindVertexArray(ufoMesh.vao);
+        glUniform1i(17, 0);  // uUseTexture = 0
+
+        Vec3f bodyColor{ 0.2f, 0.28f, 0.38f };
+        glUniform3fv(3, 1, &bodyColor[0]);
+        glUniformMatrix4fv(0, 1, GL_TRUE, ufoMvp.v);
+        glDrawArrays(GL_TRIANGLES, 0, ufoBaseVertexCount);
+
+        Vec3f topColor{ 0.25f, 0.45f, 0.95f };
+        glUniform3fv(3, 1, &topColor[0]);
+        glDrawArrays(GL_TRIANGLES, ufoBaseVertexCount, ufoTopVertexCount);
+        glBindVertexArray(0);
+
+        // ----- LANDING PADS -----
+        GLuint landingProgId = landingProgram.programId();
+        glUseProgram(landingProgId);
+
+        glUniformMatrix3fv(1, 1, GL_TRUE, normalMatrix.v);
+        glUniform3fv(2, 1, &lightDir.x);
+        glUniform3fv(4, 1, &ambientColor.x);
+        glUniform3fv(6, 1, &camPosForLighting.x);
+        glUniform3fv(7, 3, &pointLightPositions[0].x);
+        glUniform3fv(10, 3, &pointLightColorsArr[0].x);
+        glUniform1iv(13, 3, pointLightEnabledArr);
+        glUniform1i(16, gDirectionalLightEnabled ? 1 : 0);
+
+        glBindVertexArray(landingVao);
+
+        Mat44f lpModel1 = make_translation(landingPadPos1);
+        glUniformMatrix4fv(0, 1, GL_TRUE, viewProj.v);
+        glUniformMatrix4fv(17, 1, GL_TRUE, lpModel1.v);
+        glDrawArrays(GL_TRIANGLES, 0, landingMeshData.positions.size());
+
+        Mat44f lpModel2 = make_translation(landingPadPos2);
+        glUniformMatrix4fv(0, 1, GL_TRUE, viewProj.v);
+        glUniformMatrix4fv(17, 1, GL_TRUE, lpModel2.v);
+        glDrawArrays(GL_TRIANGLES, 0, landingMeshData.positions.size());
+
+        glBindVertexArray(0);
+    }
+    // 1.9 END
+
 
     // Forward declarations for extra callbacks
     void glfw_callback_mouse_button_( GLFWwindow* , int , int , int );
@@ -209,25 +438,6 @@ int main() try
 
     OGL_CHECKPOINT_ALWAYS();
 
-    // ---------- Mesh / shader setup ----------
-
-    struct MeshGL
-    {
-        GLuint vao = 0;
-        GLuint vboPositions = 0;
-        GLuint vboNormals   = 0;
-        GLsizei vertexCount = 0;
-        GLuint vboTexcoords = 0;
-    };
-
-    struct MeshGLColored
-    {
-        GLuint vao = 0;
-        GLuint vboPositions = 0;
-        GLuint vboNormals   = 0;
-        GLuint vboColors    = 0;
-        GLsizei vertexCount = 0;
-    };
 
     // Terrain
     SimpleMeshData terrainMeshData = load_wavefront_obj("assets/cw2/parlahti.obj");
@@ -529,218 +739,141 @@ int main() try
             gCamera.position.x, gCamera.position.y, gCamera.position.z
         );
 
-        // ===== Build VIEW based on camera mode (your nicer version) =====
-        Mat44f view;
-        Vec3f camPosForLighting = gCamera.position;
+// ===== DRAW =====
+OGL_CHECKPOINT_DEBUG();
 
-        switch (gCameraMode)
-        {
-        case CameraMode::Free:
-        {
-            camPosForLighting = gCamera.position;
+glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-            view =
-                make_rotation_x(-gCamera.pitch) *
-                make_rotation_y(gCamera.yaw) *
-                make_translation(-gCamera.position);
-            break;
-        }
-        case CameraMode::Chase:
-        {
-            Vec3f worldUp{ 0.f, 1.f, 0.f };
+if (!gSplitScreenEnabled)
+{
+    // ===== SINGLE VIEW MODE =====
+    glViewport(0, 0, static_cast<int>(fbwidth), static_cast<int>(fbheight));
+    
+    // Compute camera
+    CameraResult camResult = computeCameraView(
+        gCameraMode,
+        gCamera,
+        ufoPos,
+        forwardWS,
+        landingPadPos1
+    );
+    
+    Mat44f viewProj = proj * camResult.view;
+    
+    renderScene(
+        viewProj,
+        camResult.position,
+        terrainVAO,
+        terrainMeshData,
+        terrainTexture,
+        terrainProgram,
+        model,
+        lightDir,
+        ambientColor,
+        baseColor,
+        ufoMesh,
+        ufoBaseVertexCount,
+        ufoTopVertexCount,
+        ufoModel,
+        landingVao,
+        landingMeshData,
+        landingProgram,
+        landingPadPos1,
+        landingPadPos2
+    );
+}
+else
+{
+    // ===== SPLIT SCREEN MODE =====
+    
+    // Left half
+    int leftWidth = static_cast<int>(fbwidth) / 2;
+    int rightWidth = static_cast<int>(fbwidth) - leftWidth;  // Handle odd widths
+    int fullHeight = static_cast<int>(fbheight);
+    
+    glViewport(0, 0, leftWidth, fullHeight);
+    
+    // Compute projection for left view
+    float aspectLeft = static_cast<float>(leftWidth) / static_cast<float>(fullHeight);
+    Mat44f projLeft = make_perspective_projection(fovRadians, aspectLeft, zNear, zFar);
+    
+    CameraResult camResult1 = computeCameraView(
+        gCameraMode,
+        gCamera,
+        ufoPos,
+        forwardWS,
+        landingPadPos1
+    );
+    
+    Mat44f viewProj1 = projLeft * camResult1.view;
+    
+    renderScene(
+        viewProj1,
+        camResult1.position,
+        terrainVAO,
+        terrainMeshData,
+        terrainTexture,
+        terrainProgram,
+        model,
+        lightDir,
+        ambientColor,
+        baseColor,
+        ufoMesh,
+        ufoBaseVertexCount,
+        ufoTopVertexCount,
+        ufoModel,
+        landingVao,
+        landingMeshData,
+        landingProgram,
+        landingPadPos1,
+        landingPadPos2
+    );
+    
+    // Right half
+    glViewport(leftWidth, 0, rightWidth, fullHeight);
+    
+    // Compute projection for right view
+    float aspectRight = static_cast<float>(rightWidth) / static_cast<float>(fullHeight);
+    Mat44f projRight = make_perspective_projection(fovRadians, aspectRight, zNear, zFar);
+    
+    CameraResult camResult2 = computeCameraView(
+        gCameraMode2,
+        gCamera,
+        ufoPos,
+        forwardWS,
+        landingPadPos1
+    );
+    
+    Mat44f viewProj2 = projRight * camResult2.view;
+    
+    renderScene(
+        viewProj2,
+        camResult2.position,
+        terrainVAO,
+        terrainMeshData,
+        terrainTexture,
+        terrainProgram,
+        model,
+        lightDir,
+        ambientColor,
+        baseColor,
+        ufoMesh,
+        ufoBaseVertexCount,
+        ufoTopVertexCount,
+        ufoModel,
+        landingVao,
+        landingMeshData,
+        landingProgram,
+        landingPadPos1,
+        landingPadPos2
+    );
+    
+    // Restore full viewport for next frame
+    glViewport(0, 0, static_cast<int>(fbwidth), static_cast<int>(fbheight));
+}
 
-            Vec3f f = forwardWS;
-            if (!gUfoAnim.active)
-            {
-                f = Vec3f{ 0.f, 0.f, -1.f };
-            }
-
-            Vec3f fHoriz{ f.x, 0.f, f.z };
-            float len = length(fHoriz);
-            if (len < 1e-3f)
-            {
-                fHoriz = Vec3f{ 0.f, 0.f, -1.f };
-            }
-            else
-            {
-                fHoriz = fHoriz / len;
-            }
-
-            float distBack   = 7.0f;
-            float heightUp   = 1.0f;
-            float sideOffset = -2.0f;
-
-            Vec3f right = normalize(cross(worldUp, fHoriz));
-
-            Vec3f camPos =
-                ufoPos
-                - fHoriz * distBack
-                + worldUp * heightUp
-                + right   * sideOffset;
-
-            Vec3f camTarget = ufoPos + fHoriz * 2.0f;
-            Vec3f dir       = normalize(camTarget - camPos);
-
-            float camPitch = std::asin(dir.y);
-            float camYaw   = std::atan2(dir.x, -dir.z);
-
-            camPosForLighting = camPos;
-
-            view =
-                make_rotation_x(-camPitch) *
-                make_rotation_y(camYaw) *
-                make_translation(-camPos);
-            break;
-        }
-        case CameraMode::Ground:
-        {
-            Vec3f camPos{
-                landingPadPos1.x + 10.f,
-                landingPadPos1.y + 1.f,
-                landingPadPos1.z + 12.f
-            };
-
-            Vec3f camTarget = ufoPos;
-            Vec3f dir       = normalize(camTarget - camPos);
-
-            float camPitch = std::asin(dir.y);
-            float camYaw   = std::atan2(dir.x, -dir.z);
-
-            camPosForLighting = camPos;
-
-            view =
-                make_rotation_x(-camPitch) *
-                make_rotation_y(camYaw) *
-                make_translation(-camPos);
-            break;
-        }
-        }
-
-        Mat44f viewProj   = proj * view;
-        Mat44f terrainMvp = viewProj * model;
-        Mat44f ufoMvp     = viewProj * ufoModel;
-
-        Mat33f normalMatrix = mat44_to_mat33( transpose(invert(model)) );
-
-        // ===== DRAW =====
-        OGL_CHECKPOINT_DEBUG();
-
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-        GLuint progId = terrainProgram.programId();
-        glUseProgram(progId);
-
-        // Lighting
-        glUniform3fv(2, 1, &lightDir[0]);
-        glUniform3fv(4, 1, &ambientColor[0]);
-
-        glUniformMatrix3fv(
-            1,
-            1, GL_TRUE, normalMatrix.v
-        );
-
-        // Camera position (use actual camera)
-        glUniform3fv(6, 1, &camPosForLighting.x);
-
-        // Tell shader to use the texture for terrain
-        glUniform1i(17, 1);  // uUseTexture = 1
-
-        // Point lights
-        Vec3f pointLightPositions[3] = {
-            gPointLights[0].position,
-            gPointLights[1].position,
-            gPointLights[2].position
-        };
-        Vec3f pointLightColorsArr[3] = {
-            gPointLights[0].color,
-            gPointLights[1].color,
-            gPointLights[2].color
-        };
-        GLint pointLightEnabledArr[3] = {
-            gPointLights[0].enabled ? 1 : 0,
-            gPointLights[1].enabled ? 1 : 0,
-            gPointLights[2].enabled ? 1 : 0
-        };
-
-        glUniform3fv(7, 3, &pointLightPositions[0].x);
-        glUniform3fv(10, 3, &pointLightColorsArr[0].x);
-        glUniform1iv(13, 3, pointLightEnabledArr);
-
-        glUniform1i(16, gDirectionalLightEnabled ? 1 : 0);
-
-        // ----- Terrain -----
-        glUniformMatrix4fv(0, 1, GL_TRUE, terrainMvp.v);
-        glUniformMatrix4fv(18, 1, GL_TRUE, model.v);
-
-        glUniform3fv(3, 1, &baseColor[0]);
-
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, terrainTexture);
-        glUniform1i(5, 0);
-
-        glBindVertexArray(terrainVAO);
-        glDrawArrays(GL_TRIANGLES, 0, terrainMeshData.positions.size());
-        glBindVertexArray(0);
-
-        // ----- UFO -----
-        glUniformMatrix3fv(
-            1,
-            1, GL_TRUE, normalMatrix.v
-        );
-        glUniformMatrix4fv(18, 1, GL_TRUE, ufoModel.v);
-
-        glBindVertexArray(ufoMesh.vao);
-
-        // No texture: solid colour
-        glUniform1i(17, 0);  // uUseTexture = 0
-
-        Vec3f bodyColor{ 0.2f, 0.28f, 0.38f };
-        glUniform3fv(3, 1, &bodyColor[0]);
-        glUniformMatrix4fv(0, 1, GL_TRUE, ufoMvp.v);
-        glDrawArrays(GL_TRIANGLES, 0, ufoBaseVertexCount);
-
-        Vec3f topColor{ 0.25f, 0.45f, 0.95f };
-        glUniform3fv(3, 1, &topColor[0]);
-        glDrawArrays(GL_TRIANGLES, ufoBaseVertexCount, ufoTopVertexCount);
-
-        glBindVertexArray(0);
-
-        // ----- Landing pads -----
-        GLuint landingProgId = landingProgram.programId();
-        glUseProgram(landingProgId);
-
-        glUniformMatrix3fv(
-            1,
-            1, GL_TRUE, normalMatrix.v
-        );
-
-        glUniform3fv(2, 1, &lightDir[0]);
-        glUniform3fv(4, 1, &ambientColor[0]);
-
-        // Use same camera position as main view
-        glUniform3fv(6, 1, &camPosForLighting.x);
-
-        glUniform3fv(7, 3, &pointLightPositions[0].x);
-        glUniform3fv(10, 3, &pointLightColorsArr[0].x);
-        glUniform1iv(13, 3, pointLightEnabledArr);
-        glUniform1i(16, gDirectionalLightEnabled ? 1 : 0);
-
-        glBindVertexArray(landingVao);
-
-        Mat44f lpModel1 = make_translation(landingPadPos1);
-        glUniformMatrix4fv(0, 1, GL_TRUE, viewProj.v);
-        glUniformMatrix4fv(17, 1, GL_TRUE, lpModel1.v);
-        glDrawArrays(GL_TRIANGLES, 0, landingMeshData.positions.size());
-
-        Mat44f lpModel2 = make_translation(landingPadPos2);
-        glUniformMatrix4fv(0, 1, GL_TRUE, viewProj.v);
-        glUniformMatrix4fv(17, 1, GL_TRUE, lpModel2.v);
-        glDrawArrays(GL_TRIANGLES, 0, landingMeshData.positions.size());
-
-        glBindVertexArray(0);
-
-        OGL_CHECKPOINT_DEBUG();
-        glfwSwapBuffers( window );
+OGL_CHECKPOINT_DEBUG();
+glfwSwapBuffers( window );
     }
 
     return 0;
@@ -848,20 +981,37 @@ namespace
             gUfoAnim.time   = 0.f;
         }
 
-        // Camera mode cycle
+        // Toggle split screen with V key
+        if (aKey == GLFW_KEY_V && aAction == GLFW_PRESS)
+        {
+            gSplitScreenEnabled = !gSplitScreenEnabled;
+        }
+
+        // Camera mode cycling - must check Shift FIRST
         if (aKey == GLFW_KEY_C && aAction == GLFW_PRESS)
         {
-            if (gCameraMode == CameraMode::Free)
+            bool shiftPressed = (glfwGetKey(aWindow, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS || 
+                                glfwGetKey(aWindow, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS);
+            
+            if (shiftPressed)
             {
-                gCameraMode = CameraMode::Chase;
-            }
-            else if (gCameraMode == CameraMode::Chase)
-            {
-                gCameraMode = CameraMode::Ground;
+                // Shift+C: Cycle camera mode 2 (right view)
+                if (gCameraMode2 == CameraMode::Free)
+                    gCameraMode2 = CameraMode::Chase;
+                else if (gCameraMode2 == CameraMode::Chase)
+                    gCameraMode2 = CameraMode::Ground;
+                else
+                    gCameraMode2 = CameraMode::Free;
             }
             else
             {
-                gCameraMode = CameraMode::Free;
+                // C only: Cycle camera mode 1 (left view)
+                if (gCameraMode == CameraMode::Free)
+                    gCameraMode = CameraMode::Chase;
+                else if (gCameraMode == CameraMode::Chase)
+                    gCameraMode = CameraMode::Ground;
+                else
+                    gCameraMode = CameraMode::Free;
             }
         }
     }
