@@ -94,17 +94,13 @@ namespace
     }
 }
 
-UIRenderer::UIRenderer(int windowWidth, int windowHeight)
+UIRenderer::UIRenderer(int windowWidth, int windowHeight, ShaderProgram& shader)
     : mWindowWidth(windowWidth)
     , mWindowHeight(windowHeight)
-    , mShader({
-        { GL_VERTEX_SHADER,   "assets/cw2/ui.vert" },
-        { GL_FRAGMENT_SHADER, "assets/cw2/ui.frag" }
-      })
+    , mShader(shader)  // Now just storing the reference
     , mFontTexture(0)
 {
-
-    std::print("UIRenderer: Shader program created with ID: {}\n", mShader.programId());
+    std::print("UIRenderer: Using shader program with ID: {}\n", mShader.programId());
 
     // Validate shader program
     GLint isLinked = 0;

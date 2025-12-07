@@ -30,7 +30,7 @@ struct Button
 class UIRenderer
 {
 public:
-    UIRenderer(int windowWidth, int windowHeight);
+    UIRenderer(int windowWidth, int windowHeight, ShaderProgram& shader);
     ~UIRenderer();
     
     void setWindowSize(int width, int height);
@@ -50,7 +50,7 @@ private:
     FONScontext* mFontContext;
     int mFont;
     
-    ShaderProgram mShader;
+    ShaderProgram& mShader;
     GLuint mVAO;
     GLuint mVBO;
     GLuint mFontTexture;

@@ -640,8 +640,14 @@ MeshGL ufoMesh;	// Create VAO with material properties (uses the same function a
         load_wavefront_obj("assets/cw2/landingpad.obj");
     GLuint landingVao = create_vao(landingMeshData);
 
-    // Create UI renderer
-    UIRenderer uiRenderer(1280, 720);
+    // Create UI shader
+    ShaderProgram uiShader({
+        { GL_VERTEX_SHADER,   "assets/cw2/ui.vert" },
+        { GL_FRAGMENT_SHADER, "assets/cw2/ui.frag" }
+    });
+
+    // Create UI renderer with the shader
+    UIRenderer uiRenderer(1280, 720, uiShader);
 
     Button launchButton{"Launch", 0, 0, 120, 40};
     Button resetButton{"Reset", 0, 0, 120, 40};
