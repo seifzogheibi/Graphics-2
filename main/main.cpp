@@ -88,6 +88,31 @@ namespace
         double lastMouseY = 0.0;
     };
 
+// ----------------------
+// Particle system
+// ----------------------
+struct Particle
+{
+    Vec3f pos;
+    Vec3f vel;
+    float life;    // seconds remaining; <= 0 means "dead"
+};
+
+constexpr int kMaxParticles = 70000;   // tweak if you like
+
+Particle gParticles[kMaxParticles];
+int gAliveCount = 0;                  // how many are alive this frame
+
+// GPU resources for particles
+GLuint gParticleVAO = 0;
+GLuint gParticleVBO = 0;
+GLuint gParticleTexture = 0;
+
+// For emission
+float gEmissionAccumulator = 0.0f;    // for rate * dt
+float gEmissionRate        = 1000.0f;  // particles per second (tweak)
+
+
     // ===== 1.8: camera modes =====
     enum class CameraMode
     {
@@ -109,6 +134,18 @@ namespace
 
     VehicleAnim gUfoAnim;
 
+	// particle system helper: find a free particle slot
+	int alloc_particle()
+{
+    for (int i = 0; i < kMaxParticles; ++i)
+    {
+        if (gParticles[i].life <= 0.0f)
+            return i;
+    }
+    return -1;
+}
+
+
     // Simple cubic Bézier in 3D (not actually used in this version,
     // but kept in case needed)
     Vec3f bezier3(
@@ -129,13 +166,8 @@ namespace
             (3.f * it  * t2) * C +
             (t2 * t)        * D;
     }
-
-    // Task 1.9
-    // Split screen state
-    bool gSplitScreenEnabled = false;
-    CameraMode gCameraMode2 = CameraMode::Chase;  // Second view's camera mode
-
-    struct PointLight
+	
+	struct PointLight
     {
         Vec3f position;
         Vec3f color;
@@ -144,6 +176,13 @@ namespace
 
     PointLight gPointLights[3];
     bool gDirectionalLightEnabled = true;
+
+    // Task 1.9
+    // Split screen state
+    bool gSplitScreenEnabled = false;
+    CameraMode gCameraMode2 = CameraMode::Chase;  // Second view's camera mode
+
+    
 
     // Compute view matrix for a given camera mode
     // Returns both the view matrix and camera position (for lighting)
@@ -253,7 +292,8 @@ namespace
         SimpleMeshData const& landingMeshData,
         ShaderProgram const& landingProgram,
         Vec3f const& landingPadPos1,
-        Vec3f const& landingPadPos2
+        Vec3f const& landingPadPos2,
+        ShaderProgram const& particleProgram
     )
     {
         Mat44f terrainMvp = viewProj * model;
@@ -345,8 +385,52 @@ namespace
         glDrawArrays(GL_TRIANGLES, 0, landingMeshData.positions.size());
 
         glBindVertexArray(0);
+
+        // ====================
+        // Draw PARTICLES (exhaust)
+        // ====================
+        if (gAliveCount > 0)
+        {
+            GLuint particleProgId = particleProgram.programId();
+            glUseProgram(particleProgId);
+
+            // Additive blending for exhaust
+            // glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);   // override default
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_ONE, GL_ONE);
+            glDepthMask(GL_FALSE);
+
+            // Keep depth test, but disable depth writes so particles don't overwrite each other
+            glDepthMask(GL_FALSE);
+
+            // uViewProj at location 0
+            glUniformMatrix4fv(0, 1, GL_TRUE, viewProj.v);
+
+            // uPointSize at location 1 (pixels)
+            // glUniform1f(1, 16.0f);   // tweak 24–48 so each particle covers multiple pixels
+            glUniform1f(1, 2.f);              // tweak this value
+            glUniform3fv(4, 1, &camPosForLighting.x);
+
+            // uColor at location 2 (tint)
+            Vec3f exhaustColor{ 0.9f, 0.9f, 1.0f }; // bluish-white exhaust
+            glUniform3fv(2, 1, &exhaustColor.x);
+
+            // uTexture at location 3
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, gParticleTexture);
+            glUniform1i(3, 0);
+
+            glBindVertexArray(gParticleVAO);
+            glDrawArrays(GL_POINTS, 0, gAliveCount);
+            glBindVertexArray(0);
+
+            // Restore state for any later draws
+            glDepthMask(GL_TRUE);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        }
+
+        // 1.9 END
     }
-    // 1.9 END
 
 
     // Forward declarations for extra callbacks
@@ -429,6 +513,13 @@ int main() try
     glEnable(GL_CULL_FACE);
     glEnable(GL_FRAMEBUFFER_SRGB);
     glClearColor(0.2f, 0.2f, 0.2f, 1.f);
+
+	// For point sprites with programmable size
+glEnable(GL_PROGRAM_POINT_SIZE);
+
+// Blending (we’ll switch blend func around particles draw)
+glEnable(GL_BLEND);
+
 
     OGL_CHECKPOINT_ALWAYS();
 
@@ -644,6 +735,49 @@ MeshGL ufoMesh;	// Create VAO with material properties (uses the same function a
     gPointLights[2].enabled = true;
     gDirectionalLightEnabled = true;
 
+    // ---------------------
+    // Particle system setup
+    // ---------------------
+    ShaderProgram particleProgram({
+        { GL_VERTEX_SHADER,   "assets/cw2/particle.vert" },
+        { GL_FRAGMENT_SHADER, "assets/cw2/particle.frag" }
+    });
+
+    // Allocate particle buffers
+    glGenVertexArrays(1, &gParticleVAO);
+    glGenBuffers(1,      &gParticleVBO);
+
+    glBindVertexArray(gParticleVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, gParticleVBO);
+
+    // reserve max particles (positions only)
+    glBufferData(
+        GL_ARRAY_BUFFER,
+        kMaxParticles * sizeof(Vec3f),
+        nullptr,
+        GL_DYNAMIC_DRAW
+    );
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(
+        0, 3, GL_FLOAT, GL_FALSE,
+        sizeof(Vec3f),
+        (void*)0
+    );
+
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    // Load particle texture (RGBA with alpha)
+    gParticleTexture = load_texture_2d("assets/cw2/particle.png");
+
+    // Initialise all particles as dead
+    for (int i = 0; i < kMaxParticles; ++i)
+        gParticles[i].life = -1.0f;
+
+    gAliveCount = 0;
+    gEmissionAccumulator = 0.0f;
+
     OGL_CHECKPOINT_ALWAYS();
 
     // ========== MAIN LOOP ==========
@@ -812,6 +946,66 @@ MeshGL ufoMesh;	// Create VAO with material properties (uses the same function a
         gPointLights[1].position = ufoPos + lightOffset1;
         gPointLights[2].position = ufoPos + lightOffset2;
 
+
+		// ---------------------------------
+// Particle simulation (rocket exhaust)
+// ---------------------------------
+
+// Emit only when animation is active and not paused
+if (gUfoAnim.active && !gUfoAnim.paused)
+{
+    // Engine position: behind rocket along -forwardWS
+    Vec3f enginePos = ufoPos - forwardWS * 2.0f;  // tweak distance
+
+    // Particles to spawn this frame
+    gEmissionAccumulator += gEmissionRate * dt;
+    int toSpawn = static_cast<int>(gEmissionAccumulator);
+    if (toSpawn > 0)
+        gEmissionAccumulator -= static_cast<float>(toSpawn);
+
+    for (int n = 0; n < toSpawn; ++n)
+    {
+        int idx = alloc_particle();
+        if (idx < 0) break;
+
+        // small random offset
+        float rx = (std::rand() / float(RAND_MAX) - 0.5f) * 0.3f;
+        float ry = (std::rand() / float(RAND_MAX) - 0.5f) * 0.3f;
+        float rz = (std::rand() / float(RAND_MAX) - 0.5f) * 0.3f;
+
+        gParticles[idx].pos = enginePos + Vec3f{ rx, ry, rz };
+
+        // velocity mainly away from rocket
+        Vec3f baseVel = -forwardWS * 20.0f;
+        Vec3f jitter{
+            (std::rand() / float(RAND_MAX) - 0.5f) * 4.0f,
+            (std::rand() / float(RAND_MAX) - 0.5f) * 4.0f,
+            (std::rand() / float(RAND_MAX) - 0.5f) * 4.0f
+        };
+        gParticles[idx].vel = baseVel + jitter;
+
+        gParticles[idx].life = 1.0f + (std::rand() / float(RAND_MAX)) * 0.5f;
+    }
+}
+
+// Integrate motion – freeze when paused
+if (!gUfoAnim.paused)
+{
+    for (int i = 0; i < kMaxParticles; ++i)
+    {
+        if (gParticles[i].life > 0.0f)
+        {
+            gParticles[i].life -= dt;
+            if (gParticles[i].life > 0.0f)
+            {
+                gParticles[i].pos = gParticles[i].pos + gParticles[i].vel * dt;
+            }
+        }
+    }
+}
+
+
+
         // ===== Camera movement (free) =====
         float baseSpeed = 5.0f;
         if (gCamera.fast) baseSpeed *= 4.0f;
@@ -853,6 +1047,34 @@ MeshGL ufoMesh;	// Create VAO with material properties (uses the same function a
             gCamera.position.x, gCamera.position.y, gCamera.position.z
         );
 
+		// ----------------------------
+// Upload alive particles to VBO
+// ----------------------------
+static Vec3f particlePositions[kMaxParticles];
+int alive = 0;
+
+for (int i = 0; i < kMaxParticles; ++i)
+{
+    if (gParticles[i].life > 0.0f)
+    {
+        particlePositions[alive++] = gParticles[i].pos;
+    }
+}
+gAliveCount = alive;
+
+if (gAliveCount > 0)
+{
+    glBindBuffer(GL_ARRAY_BUFFER, gParticleVBO);
+    glBufferSubData(
+        GL_ARRAY_BUFFER,
+        0,
+        gAliveCount * sizeof(Vec3f),
+        particlePositions
+    );
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+
+
 // ===== DRAW =====
 OGL_CHECKPOINT_DEBUG();
 
@@ -893,7 +1115,8 @@ if (!gSplitScreenEnabled)
         landingMeshData,
         landingProgram,
         landingPadPos1,
-        landingPadPos2
+        landingPadPos2,
+        particleProgram
     );
 }
 else
@@ -940,7 +1163,8 @@ else
         landingMeshData,
         landingProgram,
         landingPadPos1,
-        landingPadPos2
+        landingPadPos2,
+        particleProgram
     );
     
     // Right half
@@ -979,226 +1203,16 @@ else
         landingMeshData,
         landingProgram,
         landingPadPos1,
-        landingPadPos2
+        landingPadPos2,
+        particleProgram
     );
     
     // Restore full viewport for next frame
     glViewport(0, 0, static_cast<int>(fbwidth), static_cast<int>(fbheight));
 }
-        // ===== Build VIEW based on camera mode (your nicer version) =====
-        Mat44f view;
-        Vec3f camPosForLighting = gCamera.position;
 
-        switch (gCameraMode)
-        {
-        case CameraMode::Free:
-        {
-            camPosForLighting = gCamera.position;
-
-            view =
-                make_rotation_x(-gCamera.pitch) *
-                make_rotation_y(gCamera.yaw) *
-                make_translation(-gCamera.position);
-            break;
-        }
-        case CameraMode::Chase:
-        {
-            Vec3f worldUp{ 0.f, 1.f, 0.f };
-
-            Vec3f f = forwardWS;
-            if (!gUfoAnim.active)
-            {
-                f = Vec3f{ 0.f, 0.f, -1.f };
-            }
-
-            Vec3f fHoriz{ f.x, 0.f, f.z };
-            float len = length(fHoriz);
-            if (len < 1e-3f)
-            {
-                fHoriz = Vec3f{ 0.f, 0.f, -1.f };
-            }
-            else
-            {
-                fHoriz = fHoriz / len;
-            }
-
-            float distBack   = 7.0f;
-            float heightUp   = 1.0f;
-            float sideOffset = -2.0f;
-
-            Vec3f right = normalize(cross(worldUp, fHoriz));
-
-            Vec3f camPos =
-                ufoPos
-                - fHoriz * distBack
-                + worldUp * heightUp
-                + right   * sideOffset;
-
-            Vec3f camTarget = ufoPos + fHoriz * 2.0f;
-            Vec3f dir       = normalize(camTarget - camPos);
-
-            float camPitch = std::asin(dir.y);
-            float camYaw   = std::atan2(dir.x, -dir.z);
-
-            camPosForLighting = camPos;
-
-            view =
-                make_rotation_x(-camPitch) *
-                make_rotation_y(camYaw) *
-                make_translation(-camPos);
-            break;
-        }
-        case CameraMode::Ground:
-        {
-            Vec3f camPos{
-                landingPadPos1.x + 10.f,
-                landingPadPos1.y + 1.f,
-                landingPadPos1.z + 12.f
-            };
-
-            Vec3f camTarget = ufoPos;
-            Vec3f dir       = normalize(camTarget - camPos);
-
-            float camPitch = std::asin(dir.y);
-            float camYaw   = std::atan2(dir.x, -dir.z);
-
-            camPosForLighting = camPos;
-
-            view =
-                make_rotation_x(-camPitch) *
-                make_rotation_y(camYaw) *
-                make_translation(-camPos);
-            break;
-        }
-        }
-
-        Mat44f viewProj   = proj * view;
-        Mat44f terrainMvp = viewProj * model;
-        Mat44f ufoMvp     = viewProj * ufoModel;
-
-        Mat33f normalMatrix = mat44_to_mat33( transpose(invert(model)) );
-
-        // ===== DRAW =====
         OGL_CHECKPOINT_DEBUG();
-
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-        GLuint progId = terrainProgram.programId();
-        glUseProgram(progId);
-
-        // Lighting
-        glUniform3fv(2, 1, &lightDir[0]);
-        glUniform3fv(4, 1, &ambientColor[0]);
-
-        glUniformMatrix3fv(
-            1,
-            1, GL_TRUE, normalMatrix.v
-        );
-
-        // Camera position (use actual camera)
-        glUniform3fv(6, 1, &camPosForLighting.x);
-
-        // Tell shader to use the texture for terrain
-        glUniform1i(17, 1);  // uUseTexture = 1
-
-        // Point lights
-        Vec3f pointLightPositions[3] = {
-            gPointLights[0].position,
-            gPointLights[1].position,
-            gPointLights[2].position
-        };
-        Vec3f pointLightColorsArr[3] = {
-            gPointLights[0].color,
-            gPointLights[1].color,
-            gPointLights[2].color
-        };
-        GLint pointLightEnabledArr[3] = {
-            gPointLights[0].enabled ? 1 : 0,
-            gPointLights[1].enabled ? 1 : 0,
-            gPointLights[2].enabled ? 1 : 0
-        };
-
-        glUniform3fv(7, 3, &pointLightPositions[0].x);
-        glUniform3fv(10, 3, &pointLightColorsArr[0].x);
-        glUniform1iv(13, 3, pointLightEnabledArr);
-
-        glUniform1i(16, gDirectionalLightEnabled ? 1 : 0);
-
-        // ----- Terrain -----
-        glUniformMatrix4fv(0, 1, GL_TRUE, terrainMvp.v);
-        glUniformMatrix4fv(18, 1, GL_TRUE, model.v);
-
-        glUniform3fv(3, 1, &baseColor[0]);
-
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, terrainTexture);
-        glUniform1i(5, 0);
-
-        glBindVertexArray(terrainVAO);
-        glDrawArrays(GL_TRIANGLES, 0, terrainMeshData.positions.size());
-        glBindVertexArray(0);
-
-// ====================
-// Draw UFO
-// ====================
-glUniformMatrix3fv(
-	1,  // location = 1 in the shader
-	1, GL_TRUE, normalMatrix.v
-);
-
-glUniformMatrix4fv(18, 1, GL_TRUE, ufoModel.v);   // uModel at location 18
-
-        glBindVertexArray(ufoMesh.vao);
-
-        // No texture: solid colour
-        glUniform1i(17, 0);  // uUseTexture = 0
-
-// Set base colour to white so the material colours show as-is
-Vec3f ufoBaseColor{ 1.0f, 1.0f, 1.0f };
-glUniform3fv(3, 1, &ufoBaseColor[0]);
-
-// Single draw: all parts are handled via per-vertex materials
-glUniformMatrix4fv(0, 1, GL_TRUE, ufoMvp.v);
-glDrawArrays(GL_TRIANGLES, 0, ufoMesh.vertexCount);
-
-        glBindVertexArray(0);
-
-        // ----- Landing pads -----
-        GLuint landingProgId = landingProgram.programId();
-        glUseProgram(landingProgId);
-
-        glUniformMatrix3fv(
-            1,
-            1, GL_TRUE, normalMatrix.v
-        );
-
-        glUniform3fv(2, 1, &lightDir[0]);
-        glUniform3fv(4, 1, &ambientColor[0]);
-
-        // Use same camera position as main view
-        glUniform3fv(6, 1, &camPosForLighting.x);
-
-        glUniform3fv(7, 3, &pointLightPositions[0].x);
-        glUniform3fv(10, 3, &pointLightColorsArr[0].x);
-        glUniform1iv(13, 3, pointLightEnabledArr);
-        glUniform1i(16, gDirectionalLightEnabled ? 1 : 0);
-
-        glBindVertexArray(landingVao);
-
-        Mat44f lpModel1 = make_translation(landingPadPos1);
-        glUniformMatrix4fv(0, 1, GL_TRUE, viewProj.v);
-        glUniformMatrix4fv(17, 1, GL_TRUE, lpModel1.v);
-        glDrawArrays(GL_TRIANGLES, 0, landingMeshData.positions.size());
-
-        Mat44f lpModel2 = make_translation(landingPadPos2);
-        glUniformMatrix4fv(0, 1, GL_TRUE, viewProj.v);
-        glUniformMatrix4fv(17, 1, GL_TRUE, lpModel2.v);
-        glDrawArrays(GL_TRIANGLES, 0, landingMeshData.positions.size());
-
-        glBindVertexArray(0);
-
-OGL_CHECKPOINT_DEBUG();
-glfwSwapBuffers( window );
+        glfwSwapBuffers( window );
     }
 
     return 0;
