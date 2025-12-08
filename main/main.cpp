@@ -21,6 +21,7 @@
 #include "defaults.hpp"
 #include "ufo.hpp"
 #include "loadobj.hpp"
+#include "camera.hpp"
 
 #include <rapidobj/rapidobj.hpp>
 #include "../vmlib/vec2.hpp"
@@ -67,38 +68,14 @@ namespace
         GLsizei vertexCount = 0;
     };
 
-    struct Camera
-    {
-        Vec3f position{ 0.f, 5.f, 0.f };  // Start above the terrain
-        float yaw   = 0.0f;   // radians, left-right
-        float pitch = 0.0f;   // radians, up-down
 
-        bool moveForward = false;
-        bool moveBackward = false;
-        bool moveLeft = false;
-        bool moveRight = false;
-        bool moveUp = false;
-        bool moveDown = false;
-
-        bool fast = false;   // Shift
-        bool slow = false;   // Ctrl
-
-        bool mouseCaptured = false;
-        bool firstMouse = true;
-        double lastMouseX = 0.0;
-        double lastMouseY = 0.0;
-    };
-
-    // ===== 1.8: camera modes =====
-    enum class CameraMode
-    {
-        Free = 0,   // WASD + mouse
-        Chase = 1,  // fixed distance behind/above rocket
-        Ground = 2  // fixed point on ground, always looks at rocket
-    };
 
     Camera gCamera;
     CameraMode gCameraMode = CameraMode::Free;
+    // Task 1.9
+    // Split screen state
+    bool gSplitScreenEnabled = false;
+    CameraMode gCameraMode2 = CameraMode::Chase;  // Second view's camera mode
 
     // 1.7
     struct VehicleAnim
@@ -131,10 +108,7 @@ namespace
             (t2 * t)        * D;
     }
 
-    // Task 1.9
-    // Split screen state
-    bool gSplitScreenEnabled = false;
-    CameraMode gCameraMode2 = CameraMode::Chase;  // Second view's camera mode
+
 
     struct PointLight
     {
@@ -146,94 +120,6 @@ namespace
     PointLight gPointLights[3];
     bool gDirectionalLightEnabled = true;
 
-    // Compute view matrix for a given camera mode
-    // Returns both the view matrix and camera position (for lighting)
-    struct CameraResult
-    {
-        Mat44f view;
-        Vec3f position;
-    };
-
-    CameraResult computeCameraView(
-        CameraMode mode,
-        Camera const& camera,
-        Vec3f const& ufoPos,
-        Vec3f const& forwardWS,
-        Vec3f const& landingPadPos1
-    )
-    {
-        CameraResult result;
-        
-        switch (mode)
-        {
-        case CameraMode::Free:
-        {
-            result.position = camera.position;
-            result.view = 
-                make_rotation_x(-camera.pitch) *
-                make_rotation_y(camera.yaw) *
-                make_translation(-camera.position);
-            break;
-        }
-        case CameraMode::Chase:
-        {
-            Vec3f worldUp{ 0.f, 1.f, 0.f };
-            Vec3f f = forwardWS;
-            
-            Vec3f fHoriz{ f.x, 0.f, f.z };
-            float len = length(fHoriz);
-            if (len < 1e-3f)
-                fHoriz = Vec3f{ 0.f, 0.f, -1.f };
-            else
-                fHoriz = fHoriz / len;
-
-            float distBack   = 7.0f;
-            float heightUp   = 1.0f;
-            float sideOffset = -2.0f;
-
-            Vec3f right = normalize(cross(worldUp, fHoriz));
-            Vec3f camPos = 
-                ufoPos
-                - fHoriz * distBack
-                + worldUp * heightUp
-                + right * sideOffset;
-
-            Vec3f camTarget = ufoPos + fHoriz * 2.0f;
-            Vec3f dir = normalize(camTarget - camPos);
-
-            float camPitch = std::asin(dir.y);
-            float camYaw = std::atan2(dir.x, -dir.z);
-
-            result.position = camPos;
-            result.view = 
-                make_rotation_x(-camPitch) *
-                make_rotation_y(camYaw) *
-                make_translation(-camPos);
-            break;
-        }
-        case CameraMode::Ground:
-        {
-            Vec3f camPos{
-                landingPadPos1.x + 10.f,
-                landingPadPos1.y + 1.f,
-                landingPadPos1.z + 12.f
-            };
-
-            Vec3f dir = normalize(ufoPos - camPos);
-            float camPitch = std::asin(dir.y);
-            float camYaw = std::atan2(dir.x, -dir.z);
-
-            result.position = camPos;
-            result.view = 
-                make_rotation_x(-camPitch) *
-                make_rotation_y(camYaw) *
-                make_translation(-camPos);
-            break;
-        }
-        }
-        
-        return result;
-    }
 
         void renderScene(
         Mat44f const& viewProj,
@@ -831,40 +717,7 @@ MeshGL ufoMesh;	// Create VAO with material properties (uses the same function a
         gPointLights[2].position = ufoPos + lightOffset2;
 
         // ===== Camera movement (free) =====
-        float baseSpeed = 5.0f;
-        if (gCamera.fast) baseSpeed *= 4.0f;
-        if (gCamera.slow) baseSpeed *= 0.25f;
-
-        float moveStep = baseSpeed * dt;
-
-        Vec3f camForward{
-            std::sin(gCamera.yaw) * std::cos(gCamera.pitch),
-            std::sin(gCamera.pitch),
-            -std::cos(gCamera.yaw) * std::cos(gCamera.pitch)
-        };
-        camForward = normalize(camForward);
-
-        Vec3f camRight{
-            std::cos(gCamera.yaw),
-            0.0f,
-            std::sin(gCamera.yaw)
-        };
-        camRight = normalize(camRight);
-
-        Vec3f camUp{ 0.0f, 1.0f, 0.0f };
-
-        if (gCamera.moveForward)
-            gCamera.position = gCamera.position + camForward * moveStep;
-        if (gCamera.moveBackward)
-            gCamera.position = gCamera.position - camForward * moveStep;
-        if (gCamera.moveRight)
-            gCamera.position = gCamera.position + camRight * moveStep;
-        if (gCamera.moveLeft)
-            gCamera.position = gCamera.position - camRight * moveStep;
-        if (gCamera.moveUp)
-            gCamera.position = gCamera.position + camUp * moveStep;
-        if (gCamera.moveDown)
-            gCamera.position = gCamera.position - camUp * moveStep;
+        updateCameraMovement(gCamera, dt);
 
         std::print(
             "Camera position: ({:.2f}, {:.2f}, {:.2f})\n",
@@ -1223,29 +1076,7 @@ namespace
         gMouseX = xpos;
         gMouseY = ypos;
 
-        if (!gCamera.mouseCaptured)
-            return;
-
-        if (gCamera.firstMouse)
-        {
-            gCamera.lastMouseX = xpos;
-            gCamera.lastMouseY = ypos;
-            gCamera.firstMouse = false;
-            return;
-        }
-
-        double xoffset = xpos - gCamera.lastMouseX;
-        double yoffset = ypos - gCamera.lastMouseY;
-        gCamera.lastMouseX = xpos;
-        gCamera.lastMouseY = ypos;
-
-        float sensitivity = 0.0025f;
-        gCamera.yaw   += static_cast<float>(xoffset) * sensitivity;
-        gCamera.pitch -= static_cast<float>(yoffset) * sensitivity;
-
-        float maxPitch = 1.5f;
-        if (gCamera.pitch > maxPitch)  gCamera.pitch = maxPitch;
-        if (gCamera.pitch < -maxPitch) gCamera.pitch = -maxPitch;
+        handleCameraMouseMovement(gCamera, xpos, ypos);
     }
 
     GLFWCleanupHelper::~GLFWCleanupHelper()
