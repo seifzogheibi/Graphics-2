@@ -53,18 +53,6 @@ namespace
     struct MeshGL
     {
         GLuint vao = 0;
-        GLuint vboPositions = 0;
-        GLuint vboNormals   = 0;
-        GLsizei vertexCount = 0;
-        GLuint vboTexcoords = 0;
-    };
-
-    struct MeshGLColored
-    {
-        GLuint vao = 0;
-        GLuint vboPositions = 0;
-        GLuint vboNormals   = 0;
-        GLuint vboColors    = 0;
         GLsizei vertexCount = 0;
     };
 
@@ -86,6 +74,29 @@ namespace
     };
 
     VehicleAnim gUfoAnim;
+
+	// particle system helper: find a free particle slot
+	int alloc_particle()
+{
+    for (int i = 0; i < kMaxParticles; ++i)
+    {
+        if (gParticles[i].life <= 0.0f)
+            return i;
+    }
+    return -1;
+}
+
+void reset_particles()
+{
+    for (int i = 0; i < kMaxParticles; ++i)
+    {
+        gParticles[i].life = -1.0f;   // mark all dead
+    }
+    gAliveCount = 0;
+    gEmissionAccumulator = 0.0f;
+}
+
+
 
     // Simple cubic Bézier in 3D (not actually used in this version,
     // but kept in case needed)
@@ -232,14 +243,50 @@ namespace
         glDrawArrays(GL_TRIANGLES, 0, landingMeshData.positions.size());
 
         glBindVertexArray(0);
+
+        // ====================
+        // Draw PARTICLES (exhaust)
+        // ====================
+        if (gAliveCount > 0)
+        {
+            GLuint particleProgId = particleProgram.programId();
+            glUseProgram(particleProgId);
+
+            // Additive blending for exhaust
+            // glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);   // override default
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+            // Keep depth test, but disable depth writes so particles don't overwrite each other
+            glDepthMask(GL_FALSE);
+
+            // uViewProj at location 0
+            glUniformMatrix4fv(0, 1, GL_TRUE, viewProj.v);
+
+            // uPointSize at location 1 (pixels)
+            // glUniform1f(1, 16.0f);   // tweak 24–48 so each particle covers multiple pixels
+            glUniform1f(1, 6.f);              // tweak this value
+            glUniform3fv(4, 1, &camPosForLighting.x);
+
+            // uColor at location 2 (tint)
+            Vec3f exhaustColor{ 0.9f, 0.9f, 1.0f }; // bluish-white exhaust
+            glUniform3fv(2, 1, &exhaustColor.x);
+
+            // uTexture at location 3
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, gParticleTexture);
+            glUniform1i(3, 0);
+
+            glBindVertexArray(gParticleVAO);
+            glDrawArrays(GL_POINTS, 0, gAliveCount);
+            glBindVertexArray(0);
+
+            // Restore state for any later draws
+            glDepthMask(GL_TRUE);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        }
+
+        // 1.9 END
     }
-    // 1.9 END
-        // 1.11
-        // Mouse state for UI
-        double gMouseX = 0.0;
-        double gMouseY = 0.0;
-        bool gMouseLeftDown = false;
-        // 1.11 END
 
     // Forward declarations for extra callbacks
     void glfw_callback_mouse_button_( GLFWwindow* , int , int , int );
@@ -535,8 +582,8 @@ MeshGL ufoMesh;	// Create VAO with material properties (uses the same function a
     // Create UI renderer with the shader
     UIRenderer uiRenderer(1280, 720, uiShader);
 
-    Button launchButton{"Launch", 0, 0, 120, 40};
-    Button resetButton{"Reset", 0, 0, 120, 40};
+    Button launchButton{"Launch", 0, 0, 120, 40, {0.0f, 0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}};
+    Button resetButton{"Reset", 0, 0, 120, 40, {0.5f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}};
 
     // Point lights
     gPointLights[0].color = Vec3f{ 1.f,   0.f,   0.f   };
@@ -547,6 +594,49 @@ MeshGL ufoMesh;	// Create VAO with material properties (uses the same function a
     gPointLights[1].enabled = true;
     gPointLights[2].enabled = true;
     gDirectionalLightEnabled = true;
+
+    // ---------------------
+    // Particle system setup
+    // ---------------------
+    ShaderProgram particleProgram({
+        { GL_VERTEX_SHADER,   "assets/cw2/particle.vert" },
+        { GL_FRAGMENT_SHADER, "assets/cw2/particle.frag" }
+    });
+
+    // Allocate particle buffers
+    glGenVertexArrays(1, &gParticleVAO);
+    glGenBuffers(1,      &gParticleVBO);
+
+    glBindVertexArray(gParticleVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, gParticleVBO);
+
+    // reserve max particles (positions only)
+    glBufferData(
+        GL_ARRAY_BUFFER,
+        kMaxParticles * sizeof(Vec3f),
+        nullptr,
+        GL_DYNAMIC_DRAW
+    );
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(
+        0, 3, GL_FLOAT, GL_FALSE,
+        sizeof(Vec3f),
+        (void*)0
+    );
+
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    // Load particle texture (RGBA with alpha)
+    gParticleTexture = load_texture_2d("assets/cw2/particlecopy.png", false);
+
+    // Initialise all particles as dead
+    for (int i = 0; i < kMaxParticles; ++i)
+        gParticles[i].life = -1.0f;
+
+    gAliveCount = 0;
+    gEmissionAccumulator = 0.0f;
 
     OGL_CHECKPOINT_ALWAYS();
 
@@ -617,56 +707,75 @@ MeshGL ufoMesh;	// Create VAO with material properties (uses the same function a
         float u = 0.0f;
 
         if (gUfoAnim.active)
-        {
-            float totalTime = 8.0f;
-            float tAnim = gUfoAnim.time;
-            if (tAnim < 0.f)       tAnim = 0.f;
-            if (tAnim > totalTime) tAnim = totalTime;
+{
+    float totalTime = 8.0f;
+    float tAnim = gUfoAnim.time;
+    if (tAnim < 0.f)       tAnim = 0.f;
+    if (tAnim > totalTime) tAnim = totalTime;
 
-            u = tAnim / totalTime;
-            float s = u * u;
+    // Normalised time 0..1 along the curve
+    u = tAnim / totalTime;
 
-            Vec3f worldUp{ 0.f, 1.f, 0.f };
+    // Shape parameters (similar overall scale to what you had)
+    float rangeZ    = 80.0f;
+    float maxHeight = 50.0f;
 
-            float rangeZ    = 80.0f;
-            float maxHeight = 50.0f;
+    float x0 = ufoStartPos.x;
+    float y0 = ufoStartPos.y;
+    float z0 = ufoStartPos.z;
 
-            float x0 = ufoStartPos.x;
-            float y0 = ufoStartPos.y;
-            float z0 = ufoStartPos.z;
+    // --- Define Bézier control points in 3D ---
+Vec3f A = ufoStartPos;
 
-            float p = s;
+// B: mostly straight up from the pad (no Z offset)
+//    => initial derivative is vertical, so it launches straight up
+Vec3f B{
+    x0,
+    y0 + maxHeight * 0.7f,
+    z0
+};
 
-            float z = z0 + rangeZ * p * p;
-            float y = y0 + (2.f * maxHeight * p - maxHeight * p * p);
-            float x = x0;
+// C: near the apex, partway downrange
+Vec3f C{
+    x0,
+    y0 + maxHeight,
+    z0 + rangeZ * 0.55f
+};
 
-            ufoPos = Vec3f{ x, y, z };
+// D: further downrange and lower
+Vec3f D{
+    x0,
+    y0 + maxHeight * 0.2f,
+    z0 + rangeZ
+};
 
-            float eps = 0.01f;
-            float p2 = p + eps;
-            if (p2 > 1.0f) p2 = 1.0f;
 
-            float z2 = z0 + rangeZ * p2 * p2;
-            float y2 = y0 + (2.f * maxHeight * p2 - maxHeight * p2 * p2);
-            float x2 = x0;
+    // Position on the curve
+    ufoPos = bezier3(A, B, C, D, u);
 
-            Vec3f ufoPosAhead{ x2, y2, z2 };
-            Vec3f vel = ufoPosAhead - ufoPos;
-            float speed = length(vel);
+    // Tangent from the curve (finite difference on t)
+    float eps = 0.001f;
+    float u2 = u + eps;
+    if (u2 > 1.0f) u2 = 1.0f;
 
-            if (speed > 1e-4f)
-            {
-                forwardWS = vel / speed;
+    Vec3f posAhead = bezier3(A, B, C, D, u2);
+    Vec3f vel = posAhead - ufoPos;
+    float speed = length(vel);
 
-                Vec3f upGuess{ 0.f, 1.f, 0.f };
-                if (std::fabs(dot(forwardWS, upGuess)) > 0.99f)
-                    upGuess = Vec3f{ 1.f, 0.f, 0.f };
+    if (speed > 1e-4f)
+    {
+        forwardWS = vel / speed;
 
-                rightWS = normalize(cross(upGuess, forwardWS));
-                upWS    = cross(forwardWS, rightWS);
-            }
-        }
+        Vec3f worldUp{ 0.f, 1.f, 0.f };
+        // Avoid degeneracy when flying straight up
+        if (std::fabs(dot(forwardWS, worldUp)) > 0.99f)
+            worldUp = Vec3f{ 1.f, 0.f, 0.f };
+
+        rightWS = normalize(cross(worldUp, forwardWS));
+        upWS    = cross(forwardWS, rightWS);
+    }
+}
+
         else
         {
             ufoPos    = ufoStartPos;
@@ -675,25 +784,10 @@ MeshGL ufoMesh;	// Create VAO with material properties (uses the same function a
             upWS      = Vec3f{ 0.f, 0.f, 1.f };
         }
 
-        // Orientation from path, with smooth blend
-        float fy = forwardWS.y;
-        if (fy > 1.0f)  fy = 1.0f;
-        if (fy < -1.0f) fy = -1.0f;
-
-        float yawPath   = std::atan2(forwardWS.x, -forwardWS.z);
-        float pitchPath = std::asin(fy);
-
-        float yawStart   = 0.0f;
-        float pitchStart = 0.5f * std::numbers::pi_v<float>;
-
-        float alpha = 0.0f;
-        if (gUfoAnim.active && u > 0.0f)
-        {
-            alpha = std::min(1.0f, u * u * 3.0f);
-        }
-
-        float ufoYaw   = yawStart   + alpha * (yawPath   - yawStart);
-        float ufoPitch = pitchStart + alpha * (pitchPath - pitchStart);
+        // Orientation: align rocket with the path direction (no blending)
+        float fy = std::clamp(forwardWS.y, -1.0f, 1.0f);
+        float ufoYaw   = std::atan2(forwardWS.x, -forwardWS.z);
+        float ufoPitch = std::asin(fy);
         float ufoRoll  = 0.0f;
 
         Mat44f ufoOrient =
@@ -716,6 +810,98 @@ MeshGL ufoMesh;	// Create VAO with material properties (uses the same function a
         gPointLights[1].position = ufoPos + lightOffset1;
         gPointLights[2].position = ufoPos + lightOffset2;
 
+// ---------------------------------
+// Particle simulation (rocket exhaust)
+// ---------------------------------
+
+// Emit only when animation is active and not paused
+if (gUfoAnim.active && !gUfoAnim.paused)
+{
+    // Engine position: very close to booster:
+    // slightly behind the rocket and slightly "below" it.
+
+    Vec3f enginePos = ufoPos - forwardWS  - upWS * 0.1f;
+
+    // Vec3f enginePos = ufoPos
+    //     - forwardWS * 2.f 
+    //     - upWS      *  0.1f; // adjust as needed
+
+    // Particles to spawn this frame
+    gEmissionAccumulator += gEmissionRate * dt;
+    int toSpawn = static_cast<int>(gEmissionAccumulator);
+    if (toSpawn > 0)
+        gEmissionAccumulator -= static_cast<float>(toSpawn);
+
+    // Base velocity away from rocket
+    Vec3f baseVel = -forwardWS * 7.0f;
+// Spread parameters
+    const float spreadRadius = 0.2f;   // how wide the plume is at the engine
+    const float verticalSpread = 0.4f; // small variation in height
+
+    for (int n = 0; n < toSpawn; ++n)
+    {
+        int idx = alloc_particle();
+        if (idx < 0)
+            break;
+
+        // ---- Random offset in a disc around enginePos (wider spread) ----
+        float u1 = std::rand() / float(RAND_MAX);
+        float u2 = std::rand() / float(RAND_MAX);
+
+        float r     = spreadRadius * std::sqrt(u1);                        // radius in [0, spreadRadius]
+        float theta = 2.0f * std::numbers::pi_v<float> * u2;              // angle in [0, 2π)
+
+        float dx = r * std::cos(theta);
+        float dz = r * std::sin(theta);
+        float dy = (std::rand() / float(RAND_MAX) - 0.5f) * verticalSpread;
+
+        Vec3f offset = rightWS * dx + upWS * dz;
+
+        // ---- Random jitter in velocity so trail is not a perfect line ----
+        Vec3f jitter{
+            (std::rand() / float(RAND_MAX) - 0.5f) * 6.0f,
+            (std::rand() / float(RAND_MAX) - 0.5f) * 3.0f,
+            (std::rand() / float(RAND_MAX) - 0.5f) * 6.0f
+        };
+
+        Vec3f vel = baseVel + jitter;
+
+        // ---- Sub-frame positioning: avoid "grouped" bands each frame ----
+        float tFrac = std::rand() / float(RAND_MAX); // 0..1
+        Vec3f substepOffset = vel * (tFrac * dt);
+
+        gParticles[idx].pos  = enginePos + offset;
+        gParticles[idx].vel  = vel;
+        gParticles[idx].life = 1.f;
+    }
+}
+
+
+// Integrate motion – freeze when paused
+if (!gUfoAnim.paused)
+{
+    for (int i = 0; i < kMaxParticles; ++i)
+    {
+        if (gParticles[i].life > 0.0f)
+        {
+            gParticles[i].life -= dt;
+            if (gParticles[i].life > 0.0f)
+            {
+                gParticles[i].pos = gParticles[i].pos + gParticles[i].vel * dt;
+
+                // Kill particles that go below the "sea level" plane y = 0
+                if (gParticles[i].pos.y < -0.98f)
+                {
+                    gParticles[i].life = 0.0f;
+                }
+            }
+        }
+    }
+}
+
+
+
+
         // ===== Camera movement (free) =====
         updateCameraMovement(gCamera, dt);
 
@@ -728,10 +914,36 @@ MeshGL ufoMesh;	// Create VAO with material properties (uses the same function a
         float buttonY = fbheight - 60.0f;  // 60px from bottom
         launchButton.x = fbwidth / 2.0f - 70.0f;  // Left button
         launchButton.y = buttonY;
-        resetButton.x = fbwidth / 2.0f + 70.0f;   // Right button
-        resetButton.y = buttonY;
+        resetButton.x  = fbwidth / 2.0f + 70.0f;
+        resetButton.y  = buttonY;
 
-        // After glClear and before OGL_CHECKPOINT_DEBUG at the end (around line 750, AFTER glfwSwapBuffers)
+		// ----------------------------
+// Upload alive particles to VBO
+// ----------------------------
+
+static Vec3f particlePositions[kMaxParticles];
+int alive = 0;
+
+for (int i = 0; i < kMaxParticles; ++i)
+{
+    if (gParticles[i].life > 0.0f)
+    {
+        particlePositions[alive++] = gParticles[i].pos;
+    }
+}
+gAliveCount = alive;
+
+if (gAliveCount > 0)
+{
+    glBindBuffer(GL_ARRAY_BUFFER, gParticleVBO);
+    glBufferSubData(
+        GL_ARRAY_BUFFER,
+        0,
+        gAliveCount * sizeof(Vec3f),
+        particlePositions
+    );
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
 
 
 // ===== DRAW =====
@@ -898,6 +1110,8 @@ else
             gUfoAnim.active = false;
             gUfoAnim.paused = false;
             gUfoAnim.time = 0.f;
+
+            reset_particles();
         }
 
         uiRenderer.endFrame();
@@ -1008,6 +1222,8 @@ namespace
             gUfoAnim.active = false;
             gUfoAnim.paused = false;
             gUfoAnim.time   = 0.f;
+            
+            reset_particles();
         }
 
         // Toggle split screen with V key

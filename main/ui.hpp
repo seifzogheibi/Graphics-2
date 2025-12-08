@@ -23,6 +23,8 @@ struct Button
     std::string label;
     float x, y;          // Center position
     float width, height;
+    Vec3f color;
+    Vec3f outlineColor; // Use these!!
     ButtonState state = ButtonState::Normal;
     bool wasPressed = false;
 };

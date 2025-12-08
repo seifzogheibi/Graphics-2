@@ -216,7 +216,9 @@ void UIRenderer::renderText(float x, float y, const char* text, float size, Vec4
     // We don't use its rendering, but it populates the font atlas
     fonsDrawText(mFontContext, x, y, text, nullptr);
 
-    // Get quads for each character
+    // Get quads for each characte
+    
+    // FONStextIter iter;
     FONStextIter iter;
     FONSquad quad;
     fonsTextIterInit(mFontContext, &iter, x, y, text, nullptr);
@@ -281,16 +283,17 @@ bool UIRenderer::renderButton(Button& button, double mouseX, double mouseY, bool
     switch (button.state)
     {
     case ButtonState::Normal:
-        fillColor = Vec4f{0.2f, 0.2f, 0.2f, 0.6f};
-        outlineColor = Vec4f{0.8f, 0.8f, 0.8f, 1.0f};
+        fillColor = Vec4f{button.color.x, button.color.y, button.color.z, 0.6f};
+        outlineColor = Vec4f{button.outlineColor.x, button.outlineColor.y, button.outlineColor.z, 1.0f};
         break;
     case ButtonState::Hover:
-        fillColor = Vec4f{0.3f, 0.3f, 0.4f, 0.7f};
-        outlineColor = Vec4f{1.0f, 1.0f, 1.0f, 1.0f};
+        fillColor = Vec4f{button.color.x + 0.1f, button.color.y + 0.1f, button.color.z + 0.1f, 0.7f};
+        outlineColor = Vec4f{button.outlineColor.x, button.outlineColor.y, button.outlineColor.z, 1.0f};
         break;
     case ButtonState::Pressed:
-        fillColor = Vec4f{0.4f, 0.4f, 0.5f, 0.8f};
-        outlineColor = Vec4f{0.6f, 0.8f, 1.0f, 1.0f};
+        fillColor = Vec4f{button.color.x + 0.1f, button.color.y + 0.1f, button.color.z + 0.1f, 0.8f};
+        //outlineColor = Vec4f{button.outlineColor.x - 0.1f, button.outlineColor.y, button.outlineColor.z, 0.0f};
+        outlineColor = Vec4f{0.0f, 0.0f, 0.0f, 1.0f};
         break;
     }
     
@@ -308,17 +311,19 @@ bool UIRenderer::renderButton(Button& button, double mouseX, double mouseY, bool
     float fontSize = 20.0f;
     
     fonsClearState(mFontContext);
+    
+    FONStextIter iter;
     fonsSetFont(mFontContext, mFont);
     fonsSetSize(mFontContext, fontSize);
     fonsSetAlign(mFontContext, FONS_ALIGN_CENTER | FONS_ALIGN_MIDDLE);
     
     Vec4f textColor{1.0f, 1.0f, 1.0f, 1.0f};
 
+    
     // IMPORTANT: Call fonsDrawText to trigger glyph rasterization and texture update
     fonsDrawText(mFontContext, button.x, button.y, button.label.c_str(), nullptr);
     
     
-    FONStextIter iter;
     FONSquad quad;
     fonsTextIterInit(mFontContext, &iter, button.x, button.y, 
                      button.label.c_str(), nullptr);

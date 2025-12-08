@@ -61,7 +61,15 @@ Vec3f operator*( Mat33f const& aLeft, Vec3f const& aRight ) noexcept
 {
 	Vec3f ret{};
 	for( std::size_t j = 0; j < 3; ++j )
-	{
+{
+	//TODO: your implementation goes here
+	//TODO: your implementation goes here
+	//TODO: your implementation goes here
+
+	//TODO: remove the following when you start your implementation
+	// (void)aAngle; // Avoid warnings about unused arguments until the function
+	              // is properly implemented.
+
 		for( std::size_t i = 0; i < 3; ++i )
 		{
 			ret[j] += aLeft[j,i] * aRight[i];

@@ -95,31 +95,16 @@ Vec4f operator*( Mat44f const& aLeft, Vec4f const& aRight ) noexcept
 	// (void)aRight;  // is properly implemented.
 	// return { 0.f, 0.f, 0.f, 0.f };
 
-// 	Vec4f r{};
+	Vec4f r{};
 
-//     r[0] = aLeft[0,0]*aRight[0] + aLeft[0,1]*aRight[1] + aLeft[0,2]*aRight[2] + aLeft[0,3]*aRight[3];
-//     r[1] = aLeft[1,0]*aRight[0] + aLeft[1,1]*aRight[1] + aLeft[1,2]*aRight[2] + aLeft[1,3]*aRight[3];
-//     r[2] = aLeft[2,0]*aRight[0] + aLeft[2,1]*aRight[1] + aLeft[2,2]*aRight[2] + aLeft[2,3]*aRight[3];
-//     r[3] = aLeft[3,0]*aRight[0] + aLeft[3,1]*aRight[1] + aLeft[3,2]*aRight[2] + aLeft[3,3]*aRight[3];
+    r[0] = aLeft[0,0]*aRight[0] + aLeft[0,1]*aRight[1] + aLeft[0,2]*aRight[2] + aLeft[0,3]*aRight[3];
+    r[1] = aLeft[1,0]*aRight[0] + aLeft[1,1]*aRight[1] + aLeft[1,2]*aRight[2] + aLeft[1,3]*aRight[3];
+    r[2] = aLeft[2,0]*aRight[0] + aLeft[2,1]*aRight[1] + aLeft[2,2]*aRight[2] + aLeft[2,3]*aRight[3];
+    r[3] = aLeft[3,0]*aRight[0] + aLeft[3,1]*aRight[1] + aLeft[3,2]*aRight[2] + aLeft[3,3]*aRight[3];
 
-//     return r;
-// }
-
-
-	Vec4f result{}; // zero-initialised
-
-	for (std::size_t i = 0; i < 4; ++i)
-	{
-		float sum = 0.f;
-		for (std::size_t j = 0; j < 4; ++j)
-		{
-			sum += aLeft[i, j] * aRight[j];
-		}
-		result[i] = sum;
-	}
-
-	return result;
+    return r;
 }
+
 
 // Functions:
 
@@ -146,17 +131,17 @@ Mat44f make_rotation_x( float aAngle ) noexcept
 	//               // is properly implemented.
 	// return kIdentity44f;
 
-	float c = std::cos(aAngle);
-    float s = std::sin(aAngle);
+	float ca = std::cos(aAngle);
+    float sa = std::sin(aAngle);
 
-    Mat44f m = kIdentity44f;
+    Mat44f rx = kIdentity44f;
 
-    m[1,1] =  c;  
-	m[1,2] = -s;
-    m[2,1] =  s; 
-	m[2,2] =  c;
+    rx[1,1] =  ca; 
+	rx[1,2] = -sa;
+    rx[2,1] =  sa; 
+	rx[2,2] =  ca;
 
-    return m;
+    return rx;
 
 }
 
@@ -170,15 +155,17 @@ Mat44f make_rotation_y( float aAngle ) noexcept
 	//               // is properly implemented.
 	// return kIdentity44f;
 
-	float c = std::cos(aAngle);
-    float s = std::sin(aAngle);
+	float ca = std::cos(aAngle);
+    float sa = std::sin(aAngle);
 
-    Mat44f m = kIdentity44f;
+    Mat44f ry = kIdentity44f;
 
-    m[0,0] =  c;  m[0,2] =  s;
-    m[2,0] = -s;  m[2,2] =  c;
+    ry[0,0] =  ca;   
+	ry[0,2] =  sa;
+    ry[2,0] = -sa;  
+	ry[2,2] =  ca;
 
-    return m;
+    return ry;
 }
 
 inline
@@ -190,15 +177,17 @@ Mat44f make_rotation_z( float aAngle ) noexcept
 	//               // is properly implemented.
 	// return kIdentity44f;
 
-	float c = std::cos(aAngle);
-    float s = std::sin(aAngle);
+	float ca = std::cos(aAngle);
+    float sa = std::sin(aAngle);
 
-    Mat44f m = kIdentity44f;
+    Mat44f rz = kIdentity44f;
 
-    m[0,0] =  c;  m[0,1] = -s;
-    m[1,0] =  s;  m[1,1] =  c;
+    rz[0,0] =  ca;  
+	rz[0,1] = -sa;
+    rz[1,0] =  sa;  
+	rz[1,1] =  ca;
 
-    return m;
+    return rz;
 }
 
 inline
@@ -210,13 +199,12 @@ Mat44f make_translation( Vec3f aTranslation ) noexcept
 	//                     // is properly implemented.
 	// return kIdentity44f;
 
-	Mat44f m = kIdentity44f;
+	Mat44f t = kIdentity44f;
 
-    m[0,3] = aTranslation[0];
-    m[1,3] = aTranslation[1];
-    m[2,3] = aTranslation[2];
-
-    return m;
+    t[0,3] = aTranslation[0];
+    t[1,3] = aTranslation[1];
+    t[2,3] = aTranslation[2];
+    return t;
 }
 inline
 Mat44f make_scaling( float aSX, float aSY, float aSZ ) noexcept
@@ -228,14 +216,13 @@ Mat44f make_scaling( float aSX, float aSY, float aSZ ) noexcept
 	// (void)aSZ;
 	// return kIdentity44f;
 
-	Mat44f m{};
+	Mat44f im = kIdentity44f;
 
-    m[0,0] = aSX;
-    m[1,1] = aSY;
-    m[2,2] = aSZ;
-    m[3,3] = 1.f;
+    im[0,0] = aSX;
+    im[1,1] = aSY;
+    im[2,2] = aSZ;
 
-    return m;
+    return im;
 }
 
 inline
@@ -249,20 +236,18 @@ Mat44f make_perspective_projection( float aFovInRadians, float aAspect, float aN
 	// (void)aFar;
 	// return kIdentity44f;
 
-	float f = 1.f / std::tan( aFovInRadians * 0.5f );
+	Mat44f p = kIdentity44f;
+	float s = 1.f / std::tan( aFovInRadians * 0.5f );
 
-    Mat44f m{}; // all zero
+    p[0,0] = s / aAspect;
+    p[1,1] = s;
 
-    m[0,0] = f / aAspect;
-    m[1,1] = f;
+    p[2,2] = -((aFar + aNear) / (aFar - aNear));
+    p[2,3] = (-2.f * aFar * aNear) / (aFar - aNear);
+	p[3,2] = -1.f;
+	p[3,3] = 0.f;
 
-    m[2,2] = (aFar + aNear) / (aNear - aFar);
-    m[2,3] = (2.f * aFar * aNear) / (aNear - aFar);
-
-    m[3,2] = -1.f;
-    m[3,3] =  0.f;
-
-    return m;
+    return p;
 }
 
 #endif // MAT44_HPP_E7187A26_469E_48AD_A3D2_63150F05A4CA
