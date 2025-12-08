@@ -1,0 +1,101 @@
+[1mdiff --git a/main/main.cpp b/main/main.cpp[m
+[1mindex 130e973..55ca4b2 100644[m
+[1m--- a/main/main.cpp[m
+[1m+++ b/main/main.cpp[m
+[36m@@ -75,6 +75,31 @@[m [mnamespace[m
+ [m
+     VehicleAnim gUfoAnim;[m
+ [m
+[32m+[m[32m        // ----------------------[m
+[32m+[m[32m    // Particle system[m
+[32m+[m[32m    // ----------------------[m
+[32m+[m[32m    struct Particle[m
+[32m+[m[32m    {[m
+[32m+[m[32m        Vec3f pos;[m
+[32m+[m[32m        Vec3f vel;[m
+[32m+[m[32m        float life;    // seconds remaining; <= 0 means "dead"[m
+[32m+[m[32m    };[m
+[32m+[m
+[32m+[m[32m    constexpr int kMaxParticles = 70000;   // tweak if you like[m
+[32m+[m
+[32m+[m[32m    Particle gParticles[kMaxParticles];[m
+[32m+[m[32m    int gAliveCount = 0;                  // how many are alive this frame[m
+[32m+[m
+[32m+[m[32m    // GPU resources for particles[m
+[32m+[m[32m    GLuint gParticleVAO = 0;[m
+[32m+[m[32m    GLuint gParticleVBO = 0;[m
+[32m+[m[32m    GLuint gParticleTexture = 0;[m
+[32m+[m
+[32m+[m[32m    // For emission[m
+[32m+[m[32m    float gEmissionAccumulator = 0.0f;    // for rate * dt[m
+[32m+[m[32m    float gEmissionRate        = 15000.0f;  // particles per second (tweak)[m
+[32m+[m
+[32m+[m
+ 	// particle system helper: find a free particle slot[m
+ 	int alloc_particle()[m
+ {[m
+[36m@@ -130,6 +155,11 @@[m [mvoid reset_particles()[m
+ [m
+     PointLight gPointLights[3];[m
+     bool gDirectionalLightEnabled = true;[m
+[32m+[m[32m        // 1.11 - Mouse state for UI[m
+[32m+[m[32m    double gMouseX = 0.0;[m
+[32m+[m[32m    double gMouseY = 0.0;[m
+[32m+[m[32m    bool   gMouseLeftDown = false;[m
+[32m+[m
+ [m
+ [m
+         void renderScene([m
+[36m@@ -151,7 +181,8 @@[m [mvoid reset_particles()[m
+         SimpleMeshData const& landingMeshData,[m
+         ShaderProgram const& landingProgram,[m
+         Vec3f const& landingPadPos1,[m
+[31m-        Vec3f const& landingPadPos2[m
+[32m+[m[32m        Vec3f const& landingPadPos2,[m
+[32m+[m[32m        ShaderProgram const& particleProgram   // ⬅ add this[m
+     )[m
+     {[m
+         Mat44f terrainMvp = viewProj * model;[m
+[36m@@ -369,6 +400,12 @@[m [mint main() try[m
+     glEnable(GL_FRAMEBUFFER_SRGB);[m
+     glClearColor(0.2f, 0.2f, 0.2f, 1.f);[m
+ [m
+[32m+[m[32m        // For point sprites with programmable size[m
+[32m+[m[32m    glEnable(GL_PROGRAM_POINT_SIZE);[m
+[32m+[m
+[32m+[m[32m    // Blending (we’ll switch blend func around particles draw)[m
+[32m+[m[32m    glEnable(GL_BLEND);[m
+[32m+[m
+     OGL_CHECKPOINT_ALWAYS();[m
+ [m
+     int iwidth, iheight;[m
+[36m@@ -977,7 +1014,8 @@[m [mif (!gSplitScreenEnabled)[m
+         landingMeshData,[m
+         landingProgram,[m
+         landingPadPos1,[m
+[31m-        landingPadPos2[m
+[32m+[m[32m        landingPadPos2,[m
+[32m+[m[32m        particleProgram[m
+     );[m
+ }[m
+ else[m
+[36m@@ -1024,7 +1062,8 @@[m [melse[m
+         landingMeshData,[m
+         landingProgram,[m
+         landingPadPos1,[m
+[31m-        landingPadPos2[m
+[32m+[m[32m        landingPadPos2,[m
+[32m+[m[32m        particleProgram[m
+     );[m
+     [m
+     // Right half[m
+[36m@@ -1063,7 +1102,8 @@[m [melse[m
+         landingMeshData,[m
+         landingProgram,[m
+         landingPadPos1,[m
+[31m-        landingPadPos2[m
+[32m+[m[32m        landingPadPos2,[m
+[32m+[m[32m        particleProgram[m
+     );[m
+     [m
+     // Restore full viewport for next frame[m

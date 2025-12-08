@@ -1,4 +1,4 @@
-// ufo.cpp  (SKELETON – you MUST edit / complete the TODOs yourself)
+// ufo.cpp
 
 #include "ufo.hpp"
 
@@ -22,18 +22,18 @@ namespace
         Vec3f const& p2,
         Vec3f normal )
     {
-    // Make sure the normal is unit length
-    normal = normalize(-normal);
+        // Make sure the normal is unit length
+        normal = normalize(-normal);
 
-    // Push the three vertices
-    positions.push_back(p0);
-    positions.push_back(p1);
-    positions.push_back(p2);
+        // Push the three vertices
+        positions.push_back(p0);
+        positions.push_back(p1);
+        positions.push_back(p2);
 
-    // Flat shading: same normal for all three
-    normals.push_back(normal);
-    normals.push_back(normal);
-    normals.push_back(normal);
+        // Flat shading: same normal for all three
+        normals.push_back(normal);
+        normals.push_back(normal);
+        normals.push_back(normal);
     }
 
     // ----------------------------------------------------------------
@@ -141,7 +141,7 @@ namespace
 
             Vec3f e1 = p1 - p0;
             Vec3f e2 = tip - p0;
-            Vec3f n  = cross(e2, e1);  // TODO: this uses your Vec3f::cross
+            Vec3f n  = cross(e2, e1);
 
             pushTriangleFlat(positions, normals, p0, tip, p1, n);
         }
@@ -187,42 +187,47 @@ namespace
         Vec3f p110{ c.x + hx, c.y + hy, c.z - hz };
         Vec3f p111{ c.x + hx, c.y + hy, c.z + hz };
 
-               // +X face (normal +X, CCW when viewed from +X)
-        pushTriangleFlat(positions, normals,
-                         p101, p100, p110, Vec3f{ 1.0f, 0.0f, 0.0f });
-        pushTriangleFlat(positions, normals,
-                         p101, p110, p111, Vec3f{ 1.0f, 0.0f, 0.0f });
+        // +X face
+        {
+            Vec3f n{ 1.0f, 0.0f, 0.0f };
+            pushTriangleFlat(positions, normals, p100, p101, p111, n);
+            pushTriangleFlat(positions, normals, p100, p111, p110, n);
+        }
 
-        // -X face (normal -X, CCW when viewed from -X)
-        pushTriangleFlat(positions, normals,
-                         p000, p001, p011, Vec3f{ -1.0f, 0.0f, 0.0f });
-        pushTriangleFlat(positions, normals,
-                         p000, p011, p010, Vec3f{ -1.0f, 0.0f, 0.0f });
+        // -X face
+        {
+            Vec3f n{ -1.0f, 0.0f, 0.0f };
+            pushTriangleFlat(positions, normals, p000, p011, p001, n);
+            pushTriangleFlat(positions, normals, p000, p010, p011, n);
+        }
 
-        // +Y face (top, normal +Y)
-        pushTriangleFlat(positions, normals,
-                         p110, p010, p011, Vec3f{ 0.0f, 1.0f, 0.0f });
-        pushTriangleFlat(positions, normals,
-                         p110, p011, p111, Vec3f{ 0.0f, 1.0f, 0.0f });
+        // +Y face (top)
+        {
+            Vec3f n{ 0.0f, 1.0f, 0.0f };
+            pushTriangleFlat(positions, normals, p010, p110, p111, n);
+            pushTriangleFlat(positions, normals, p010, p111, p011, n);
+        }
 
-        // -Y face (bottom, normal -Y)
-        pushTriangleFlat(positions, normals,
-                         p000, p100, p101, Vec3f{ 0.0f, -1.0f, 0.0f });
-        pushTriangleFlat(positions, normals,
-                         p000, p101, p001, Vec3f{ 0.0f, -1.0f, 0.0f });
+        // -Y face (bottom)
+        {
+            Vec3f n{ 0.0f, -1.0f, 0.0f };
+            pushTriangleFlat(positions, normals, p000, p101, p100, n);
+            pushTriangleFlat(positions, normals, p000, p001, p101, n);
+        }
 
-        // +Z face (front, normal +Z)
-        pushTriangleFlat(positions, normals,
-                         p001, p101, p111, Vec3f{ 0.0f, 0.0f, 1.0f });
-        pushTriangleFlat(positions, normals,
-                         p001, p111, p011, Vec3f{ 0.0f, 0.0f, 1.0f });
+        // +Z face (front)
+        {
+            Vec3f n{ 0.0f, 0.0f, 1.0f };
+            pushTriangleFlat(positions, normals, p001, p101, p111, n);
+            pushTriangleFlat(positions, normals, p001, p111, p011, n);
+        }
 
-        // -Z face (back, normal -Z)
-        pushTriangleFlat(positions, normals,
-                         p000, p110, p100, Vec3f{ 0.0f, 0.0f, -1.0f });
-        pushTriangleFlat(positions, normals,
-                         p000, p010, p110, Vec3f{ 0.0f, 0.0f, -1.0f });
-
+        // -Z face (back)
+        {
+            Vec3f n{ 0.0f, 0.0f, -1.0f };
+            pushTriangleFlat(positions, normals, p000, p110, p100, n);
+            pushTriangleFlat(positions, normals, p000, p010, p110, n);
+        }
     }
 } // anonymous namespace
 
@@ -250,9 +255,9 @@ void buildUfoFlatArrays(
     outNormals.clear();
 
     // -------- rocket dimensions ----------
-    int   const slices       = 600;
-    float const bodyRadius   = 0.60f;
-    float const bodyHeight   = 4.0f;
+    int   const slices       = 75;
+    float const bodyRadius   = 0.40f;
+    float const bodyHeight   = 6.0f;
     float const engineHeight = 0.5f;
     float const noseHeight   = 2.5f;
     float const finHeight    = 1.0f;
@@ -262,7 +267,7 @@ void buildUfoFlatArrays(
     float const bodyBottomY  = -bodyHeight * 0.5f;
     float const bodyTopY     =  bodyHeight * 0.5f;
 
-  // ---------------- BASE PARTS ----------------
+    // ---------------- BASE PARTS ----------------
     std::size_t baseStart = outPositions.size();
 
     // 1) main body
@@ -275,43 +280,28 @@ void buildUfoFlatArrays(
         bodyTopY
     );
     std::size_t bodyEnd = outPositions.size();
-    // 2) engine at bottom
-    std::size_t engineStart = outPositions.size();
-    float const engineRadius  = bodyRadius * 0.7f;
-    float const engineTopY    = bodyBottomY;
-    float const engineBottomY = engineTopY - engineHeight;
 
-    addCylinder(
+    // 2) engine at bottom – cone
+    std::size_t engineStart = outPositions.size();
+    float const engineRadius  = bodyRadius * 1.5f;
+    float const engineTopY    = bodyBottomY + 0.66f;
+    float const engineBottomY = engineTopY - engineHeight * 1.4f;
+
+    addCone(
         outPositions, outNormals,
         slices,
         engineRadius,
-        engineBottomY,
-        engineTopY
+        engineBottomY,   // yBase
+        engineTopY       // yTip
     );
     std::size_t engineEnd = outPositions.size();
 
     // 3) four fins (boxes)
     std::size_t finsStart = outPositions.size();
 
-    float const finCenterY = bodyBottomY + finHeight * 0.5f;
+    float const finCenterY = bodyBottomY + 0.5f + finHeight * 0.5f;
     float const finOffset  = bodyRadius + finThickness * 0.5f;
 
-    // +X
-    addBox(
-        outPositions, outNormals,
-        Vec3f{ 0.0f, finCenterY, -finOffset },
-        finThickness * 0.5f,
-        finHeight   * 0.5f,
-        finWidth    * 0.5f
-    );
-    // -X
-    addBox(
-        outPositions, outNormals,
-        Vec3f{ 0.f, finCenterY, finOffset },
-        finThickness * 0.5f,
-        finHeight   * 0.5f,
-        finWidth    * 0.5f
-    );
     // +Z
     addBox(
         outPositions, outNormals,
@@ -328,103 +318,113 @@ void buildUfoFlatArrays(
         finHeight   * 0.5f,
         finThickness * 0.5f
     );
+    // +X
+    addBox(
+        outPositions, outNormals,
+        Vec3f{ 0.0f, finCenterY, -finOffset },
+        finThickness * 0.5f,
+        finHeight   * 0.5f,
+        finWidth    * 0.5f
+    );
+    // -X
+    addBox(
+        outPositions, outNormals,
+        Vec3f{ 0.f, finCenterY, finOffset },
+        finThickness * 0.5f,
+        finHeight   * 0.5f,
+        finWidth    * 0.5f
+    );
 
     std::size_t finsEnd = outPositions.size();
 
     // 4) three small light bulbs (boxes)
     std::size_t bulbsStart = outPositions.size();
 
-    // Light 1  0 degrees
+    // Light 1  (angle 180° on your circle)
     addBox(
         outPositions, outNormals,
-        Vec3f{ -finOffset, finCenterY+3.f, 0.0f },
-        0.1f,
-        0.1f,
-        0.1f
+        Vec3f{ -finOffset, finCenterY + 3.0f, 0.0f },
+        0.1f, 0.1f, 0.1f
     );
 
     // Light 2   2pi/3 = 120 degrees
     addBox(
         outPositions, outNormals,
-        Vec3f{ 0.5f * finOffset, finCenterY+3.f,  -0.8660254f * finOffset},
-        0.1f,
-        0.1f,
-        0.1f
+        Vec3f{ 0.5f * finOffset, finCenterY + 3.0f,  0.8660254f * finOffset },
+        0.1f, 0.1f, 0.1f
     );
 
     // Light 3   4pi/3 = 240 degrees
     addBox(
         outPositions, outNormals,
-        Vec3f{ 0.5f * finOffset, finCenterY+3.f,  0.8660254f * finOffset },
-        0.1f,
-        0.1f,
-        0.1f
+        Vec3f{ 0.5f * finOffset, finCenterY + 3.0f, -0.8660254f * finOffset },
+        0.1f, 0.1f, 0.1f
     );
 
     std::size_t bulbsEnd = outPositions.size();
 
     // Mark base-vertex count
     outBaseVertexCount = static_cast<int>(outPositions.size() - baseStart);
-    // ------------- TOP PARTS -------------
-       std::size_t topStart = outPositions.size();
-   
-       // 4) nose cone, sitting on top of body
-       float const noseBaseY = bodyTopY;
-       float const noseTipY  = noseBaseY + noseHeight;
-   
-       addCone(
-           outPositions, outNormals,
-           slices,
-           bodyRadius * 1.0f,
-           noseBaseY,
-           noseTipY
-       );
-   
-       // 5) antenna cylinder above nose
-       float const antennaRadius = 0.05f;
-       float const antennaHeight = 0.2f;
-       float const antennaBaseY  = noseTipY;
-       float const antennaTopY   = antennaBaseY + antennaHeight;
-   
-       addCylinder(
-           outPositions, outNormals,
-           slices,
-           antennaRadius,
-           antennaBaseY-0.3f,
-           antennaTopY
-       );
-   
-       // 6) tiny cone tip at very top
-       float const tipRadius = 0.05f;
-       float const tipBaseY  = antennaTopY;
-       float const tipTopY   = tipBaseY + 0.5f;
-   
-       addCone(
-           outPositions, outNormals,
-           slices,
-           tipRadius,
-           tipBaseY,
-           tipTopY
-       );
-   
-       std::size_t topEnd = outPositions.size();
-   
-       outTopVertexCount = static_cast<int>(topEnd - topStart); 
-       
-       // Export all the ranges as ints for main.cpp
-           outBodyStart   = static_cast<int>(bodyStart);
-           outBodyCount   = static_cast<int>(bodyEnd - bodyStart);
-       
-           outEngineStart = static_cast<int>(engineStart);
-           outEngineCount = static_cast<int>(engineEnd - engineStart);
-       
-           outFinsStart   = static_cast<int>(finsStart);
-           outFinsCount   = static_cast<int>(finsEnd - finsStart);
-       
-           outBulbsStart  = static_cast<int>(bulbsStart);
-           outBulbsCount  = static_cast<int>(bulbsEnd - bulbsStart);
-       
-           outTopStart    = static_cast<int>(topStart);
-           outTopCount    = static_cast<int>(topEnd - topStart);
 
+    // ------------- TOP PARTS -------------
+    std::size_t topStart = outPositions.size();
+
+    // 4) nose cone, sitting on top of body
+    float const noseBaseY = bodyTopY;
+    float const noseTipY  = noseBaseY + noseHeight;
+
+    addCone(
+        outPositions, outNormals,
+        slices,
+        bodyRadius * 1.0f,
+        noseBaseY,
+        noseTipY
+    );
+
+    // 5) antenna cylinder above nose
+    float const antennaRadius = 0.05f;
+    float const antennaHeight = 0.2f;
+    float const antennaBaseY  = noseTipY;
+    float const antennaTopY   = antennaBaseY + antennaHeight;
+
+    addCylinder(
+        outPositions, outNormals,
+        slices,
+        antennaRadius,
+        antennaBaseY - 0.3f,
+        antennaTopY
+    );
+
+    // 6) tiny cone tip at very top
+    float const tipRadius = 0.05f;
+    float const tipBaseY  = antennaTopY;
+    float const tipTopY   = tipBaseY + 0.5f;
+
+    addCone(
+        outPositions, outNormals,
+        slices,
+        tipRadius,
+        tipBaseY,
+        tipTopY
+    );
+
+    std::size_t topEnd = outPositions.size();
+
+    outTopVertexCount = static_cast<int>(topEnd - topStart);
+
+    // Export all the ranges as ints for main.cpp
+    outBodyStart   = static_cast<int>(bodyStart);
+    outBodyCount   = static_cast<int>(bodyEnd - bodyStart);
+
+    outEngineStart = static_cast<int>(engineStart);
+    outEngineCount = static_cast<int>(engineEnd - engineStart);
+
+    outFinsStart   = static_cast<int>(finsStart);
+    outFinsCount   = static_cast<int>(finsEnd - finsStart);
+
+    outBulbsStart  = static_cast<int>(bulbsStart);
+    outBulbsCount  = static_cast<int>(bulbsEnd - bulbsStart);
+
+    outTopStart    = static_cast<int>(topStart);
+    outTopCount    = static_cast<int>(topEnd - topStart);
 }
