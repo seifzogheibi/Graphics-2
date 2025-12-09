@@ -22,6 +22,7 @@
 #include "ufo.hpp"
 #include "loadobj.hpp"
 #include "camera.hpp"
+#include "particles.hpp"
 
 #include <rapidobj/rapidobj.hpp>
 #include "../vmlib/vec2.hpp"
@@ -73,25 +74,8 @@ namespace
     };
     VehicleAnim gUfoAnim;
 
-    // Task1.10 Particles
-    struct Particle
-    {
-        Vec3f pos;
-        Vec3f vel;
-        float life;
-    };
-
-    // maximum number of particles
-    constexpr int kMaxParticles = 70000; 
-
-    Particle gParticles[kMaxParticles];
-    int gAliveCount= 0;
-    float gEmissionAccumulator = 0.0f;
-    float gEmissionRate = 15000.0f; // particles per second
-
-    GLuint gParticleVAO = 0; // for rendering
-    GLuint gParticleVBO = 0; 
-    GLuint gParticleTexture =0; // texture for particles
+    // Task 1.10 Particle system
+    ParticleSystem gParticleSystem;
 
     // UI mouse states for buttons (task 1.11)
     double gMouseX= 0.0;
@@ -109,29 +93,6 @@ namespace
     // Three colored point lights
     PointLight gPointLights[3];
     bool gDirectionalLightEnabled = true;
-
-    // Particle functions task 1.10
-    // Find a free particle slot
-    int alloc_particle()
-    {
-        for (int i = 0; i < kMaxParticles; ++i)
-        {
-            if (gParticles[i].life <= 0.0f)
-                return i;
-        }
-        return -1; // returns -1 if none are available
-    }
-
-    // Resets all particles
-    void reset_particles()
-    {
-        for (int i = 0; i < kMaxParticles; ++i)
-        {
-            gParticles[i].life = -1.0f;
-        }
-        gAliveCount = 0;
-        gEmissionAccumulator = 0.0f;
-    }
 
     // Task 1.7 cubic bezier curve
     Vec3f bezier3(
@@ -273,34 +234,12 @@ namespace
         glBindVertexArray(0);
 
         // Particle rendering
-        if (gAliveCount > 0)
-        {
-            GLuint particleProgId = particleProgram.programId();
-            glUseProgram(particleProgId);
-
-            // Render alpha blending and disable depth writes
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            glDepthMask(GL_FALSE);
-
-            glUniformMatrix4fv(0, 1, GL_TRUE, viewProj.v);
-            glUniform1f(1, 6.f);
-            glUniform3fv(4, 1, &camPosForLighting.x);
-
-            Vec3f exhaustColor{ 0.9f, 0.9f, 1.0f };
-            glUniform3fv(2, 1, &exhaustColor.x);
-
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, gParticleTexture);
-            glUniform1i(3, 0);
-
-            glBindVertexArray(gParticleVAO);
-            glDrawArrays(GL_POINTS, 0, gAliveCount);
-            glBindVertexArray(0);
-
-            // Restore depth writes
-            glDepthMask(GL_TRUE);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        }
+        renderParticles(
+            gParticleSystem,
+            particleProgram.programId(),
+            viewProj.v,
+            camPosForLighting
+        );
     }
 
 } // namespace
@@ -407,7 +346,6 @@ int main() try
     Vec3f lightDir = normalize(Vec3f{ 0.f, 1.f, -1.f }); // light direction
     Vec3f baseColor = { 0.6f, 0.7f, 0.6f };
     Vec3f ambientColor = { 0.18f, 0.18f, 0.18f };
-    Vec3f diffuseColor = { 0.6f, 0.6f, 0.6f }; // Currently unused
 
     //Build Spaceship mesh
     std::vector<Vec3f> ufoPositions;
@@ -587,45 +525,13 @@ int main() try
     gPointLights[2].enabled = true;
     gDirectionalLightEnabled = true;
 
-    //Particle system shaders
+    // Particle system shaders and initialization
     ShaderProgram particleProgram({
         {GL_VERTEX_SHADER, "assets/cw2/particle.vert"},
         {GL_FRAGMENT_SHADER, "assets/cw2/particle.frag"}
     });
 
-    // Allocate particle buffers (positions only)
-    glGenVertexArrays(1, &gParticleVAO);
-    glGenBuffers(1,&gParticleVBO);
-
-    glBindVertexArray(gParticleVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, gParticleVBO);
-
-    glBufferData(
-        GL_ARRAY_BUFFER,
-        kMaxParticles * sizeof(Vec3f),
-        nullptr,
-        GL_DYNAMIC_DRAW
-    );
-
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(
-        0, 3, GL_FLOAT, GL_FALSE,
-        sizeof(Vec3f),
-        (void*)0
-    );
-
-    glBindVertexArray(0);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-    // Load particle texture
-    gParticleTexture = load_texture_2d("assets/cw2/particle.png", false);
-
-    // Initialize particles 
-    for (int i = 0; i < kMaxParticles; ++i)
-        gParticles[i].life = -1.0f;
-
-    gAliveCount= 0;
-    gEmissionAccumulator = 0.0f;
+    initParticleSystem(gParticleSystem, "assets/cw2/particle.png");
 
     OGL_CHECKPOINT_ALWAYS();
 
@@ -779,78 +685,16 @@ int main() try
         gPointLights[1].position = ufoPos + lightOffset1;
         gPointLights[2].position = ufoPos + lightOffset2;
 
-        // Particle simulation
+        // Particle emission and simulation
         if (gUfoAnim.active && !gUfoAnim.paused)
         {
-            // Engine position behind the spaceship
             Vec3f enginePos = ufoPos - forwardWS * 1.4f;
-
-            gEmissionAccumulator += gEmissionRate * dt;
-            int toSpawn = (int)gEmissionAccumulator;
-            if (toSpawn > 0)
-                gEmissionAccumulator -= (float)toSpawn;
-
-            Vec3f baseVel = -forwardWS * 9.0f; // forward direction
-
-            const float spreadRadius   = 0.2f;
-            const float verticalSpread = 0.4f;
-
-            for (int n = 0; n < toSpawn; ++n)
-            {
-                int idx = alloc_particle();
-                if (idx < 0)
-                    break;
-
-                // Random offset in a disk
-                float u1 = std::rand() / float(RAND_MAX);
-                float u2r = std::rand() / float(RAND_MAX);
-
-                float r = spreadRadius * std::sqrt(u1);
-                float theta = 2.0f * std::numbers::pi_v<float> * u2r;
-
-                float dx = r * std::cos(theta);
-                float dz = r * std::sin(theta);
-                float dy = (std::rand() / float(RAND_MAX) - 0.5f) * verticalSpread;
-
-                Vec3f offset = rightWS * dx + upWS * dz;
-
-                // Additional random velocity jitter
-                Vec3f jitter{
-                    (std::rand() / float(RAND_MAX) - 0.5f) * 6.0f,
-                    (std::rand() / float(RAND_MAX) - 0.5f) * 3.0f,
-                    (std::rand() / float(RAND_MAX) - 0.5f) * 6.0f
-                };
-
-                Vec3f vel = baseVel + jitter;
-
-                // Randomise spawn time within current frame for smoother emission
-                float tFrac = std::rand() / float(RAND_MAX);
-                Vec3f substepOffset = vel * (tFrac * dt);
-
-                gParticles[idx].pos= enginePos + offset + substepOffset;
-                gParticles[idx].vel = vel;
-                gParticles[idx].life = 1.f; // 1 second lifespan
-            }
+            emitParticles(gParticleSystem, dt, enginePos, forwardWS, rightWS, upWS);
         }
 
-        // Integrate particle motion and kill the ones that hit the ground
         if (!gUfoAnim.paused)
         {
-            for (int i = 0; i < kMaxParticles; ++i)
-            {
-                if (gParticles[i].life > 0.0f)
-                {
-                    gParticles[i].life -= dt;
-                    if (gParticles[i].life > 0.0f)
-                    {
-                        gParticles[i].pos =
-                            gParticles[i].pos + gParticles[i].vel * dt;
-
-                        if (gParticles[i].pos.y < -0.98f) // ground collision
-                            gParticles[i].life = 0.0f;
-                    }
-                }
-            }
+            updateParticles(gParticleSystem, dt);
         }
 
         // Camera movement
@@ -864,26 +708,7 @@ int main() try
         resetButton.y  = buttonY;
 
         // Upload alive particles to VBO
-        static Vec3f particlePositions[kMaxParticles];
-        int alive = 0;
-        for (int i = 0; i < kMaxParticles; ++i)
-        {
-            if (gParticles[i].life > 0.0f)
-                particlePositions[alive++] = gParticles[i].pos;
-        }
-        gAliveCount = alive;
-
-        if (gAliveCount > 0)
-        {
-            glBindBuffer(GL_ARRAY_BUFFER, gParticleVBO);
-            glBufferSubData(
-                GL_ARRAY_BUFFER,
-                0,
-                gAliveCount * sizeof(Vec3f),
-                particlePositions
-            );
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
-        }
+        uploadParticleData(gParticleSystem);
 
         // Begin rendering (draw scene)
         OGL_CHECKPOINT_DEBUG();
@@ -1056,7 +881,7 @@ int main() try
             gUfoAnim.paused = false;
             gUfoAnim.time = 0.f;
 
-            reset_particles();
+            resetParticles(gParticleSystem);
         }
 
         uiRenderer.endFrame(); // flush the UI
@@ -1146,7 +971,7 @@ namespace
             gUfoAnim.active = false;
             gUfoAnim.paused = false;
             gUfoAnim.time   = 0.f;
-            reset_particles();
+            resetParticles(gParticleSystem);
         }
 
         // Toggles splitscreen with V
