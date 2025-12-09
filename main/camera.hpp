@@ -6,17 +6,19 @@
 
 enum class CameraMode
 {
-    Free = 0,   // WASD + mouse
-    Chase = 1,  // fixed distance behind/above rocket
-    Ground = 2  // fixed point on ground, always looks at rocket
+    Free = 0,   // free movement
+    Chase = 1,  // fixed distance behind and to the side of rocket
+    Ground = 2  // fixed point on ground and always looks at the rocket
 };
 
+// Camera state
 struct Camera
 {
-    Vec3f position{ 0.f, 5.f, 0.f };
-    float yaw   = 0.0f;
-    float pitch = 0.0f;
+    Vec3f position{ 0.f, 5.f, 0.f }; // strarting position (above ground)
+    float yaw   = 0.0f; // horizontal angle
+    float pitch = 0.0f; // vertical angle
 
+    // Movement flags
     bool moveForward = false;
     bool moveBackward = false;
     bool moveLeft = false;
@@ -24,15 +26,18 @@ struct Camera
     bool moveUp = false;
     bool moveDown = false;
 
-    bool fast = false;
-    bool slow = false;
+    // Speed modifiers
+    bool fast = false; // shift
+    bool slow = false; // ctrl
 
+    // mouse state
     bool mouseCaptured = false;
     bool firstMouse = true;
     double lastMouseX = 0.0;
     double lastMouseY = 0.0;
 };
 
+// final view and position result
 struct CameraResult
 {
     Mat44f view;

@@ -8,9 +8,10 @@ namespace
 {
     struct GLFONScontext
     {
-        GLuint texture;
+        GLuint texture; // atlas texture ID
     };
     
+    // Create font texture
     int glfonsRenderCreate(void* userPtr, int width, int height)
     {
         
@@ -29,6 +30,7 @@ namespace
         return 1;
     }
     
+    // Resize atlas when fontstash needs more space
     int glfonsRenderResize(void* userPtr, int width, int height)
     {
         auto* gl = static_cast<GLFONScontext*>(userPtr);
@@ -40,10 +42,11 @@ namespace
         return 1;
     }
     
+    // Update a region of  atlas
     void glfonsRenderUpdate(void* userPtr, int* rect, const unsigned char* data)
 {
     std::print("glfonsRenderUpdate called: rect=[{},{},{},{}]\n", 
-               rect[0], rect[1], rect[2], rect[3]);
+        rect[0], rect[1], rect[2], rect[3]);
 
     auto* gl = static_cast<GLFONScontext*>(userPtr);
     
@@ -55,10 +58,9 @@ namespace
     if (w <= 0 || h <= 0) return;
     
     glBindTexture(GL_TEXTURE_2D, gl->texture);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1); // set alignment to 1 byte
     
-    // IMPORTANT: Set the row length to the full atlas width (512)
-    // because 'data' points to the full atlas, not just the updated region
+    // Set row length to 512 (the full width of atlas)
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 512);
     
     // Offset into the data for the updated region
@@ -71,11 +73,10 @@ namespace
     
     glBindTexture(GL_TEXTURE_2D, 0);
 }
-    
+    // not used, drawing handled in UIRenderer
     void glfonsRenderDraw(void* userPtr, const float* verts, const float* tcoords, 
-                          const unsigned int* colors, int nverts)
+        const unsigned int* colors, int nverts)
     {
-        // We handle drawing ourselves
         (void)userPtr;
         (void)verts;
         (void)tcoords;
@@ -83,6 +84,7 @@ namespace
         (void)nverts;
     }
     
+    // Delete font texture
     void glfonsRenderDelete(void* userPtr)
     {
         auto* gl = static_cast<GLFONScontext*>(userPtr);
@@ -94,15 +96,16 @@ namespace
     }
 }
 
+// UIRenderer implementation
 UIRenderer::UIRenderer(int windowWidth, int windowHeight, ShaderProgram& shader)
     : mWindowWidth(windowWidth)
     , mWindowHeight(windowHeight)
-    , mShader(shader)  // Now just storing the reference
-    , mFontTexture(0)
+    , mShader(shader) // reference to shader program
+    , mFontTexture(0) // will be created in fontstash
 {
     std::print("UIRenderer: Using shader program with ID: {}\n", mShader.programId());
 
-    // Validate shader program
+    // Checks if shader program is linked
     GLint isLinked = 0;
     glGetProgramiv(mShader.programId(), GL_LINK_STATUS, &isLinked);
     if (isLinked == GL_FALSE)
@@ -116,17 +119,17 @@ UIRenderer::UIRenderer(int windowWidth, int windowHeight, ShaderProgram& shader)
 
     // Create fontstash context
     FONSparams params{};
-    auto* gl = new GLFONScontext{0};
+    auto* gl = new GLFONScontext{0}; // context for atlas texture
     
     params.width = 512;
     params.height = 512;
-    params.flags = FONS_ZERO_TOPLEFT;
+    params.flags = FONS_ZERO_TOPLEFT; // origin at top left
     params.renderCreate = glfonsRenderCreate;
     params.renderResize = glfonsRenderResize;
     params.renderUpdate = glfonsRenderUpdate;
     params.renderDraw = glfonsRenderDraw;
     params.renderDelete = glfonsRenderDelete;
-    params.userPtr = gl;
+    params.userPtr = gl; // pass our GL context
     
     mFontContext = fonsCreateInternal(&params);
     if (!mFontContext){
@@ -135,7 +138,7 @@ UIRenderer::UIRenderer(int windowWidth, int windowHeight, ShaderProgram& shader)
 
     std::print("UIRenderer: Loading font...\n");
     
-    // Load font
+    // Load the font
     mFont = fonsAddFont(mFontContext, "sans", "assets/cw2/DroidSansMonoDotted.ttf");
     if (mFont == FONS_INVALID){
         throw std::runtime_error("Failed to load font");
@@ -143,6 +146,7 @@ UIRenderer::UIRenderer(int windowWidth, int windowHeight, ShaderProgram& shader)
 
     std::print("UIRenderer: Font loaded successfully!\n");
     
+    // keep atlas texture ID
     mFontTexture = gl->texture;
     
     setupGL();
@@ -151,6 +155,7 @@ UIRenderer::UIRenderer(int windowWidth, int windowHeight, ShaderProgram& shader)
 
 UIRenderer::~UIRenderer()
 {
+    // cleanup fontstash
     if (mFontContext)
         fonsDeleteInternal(mFontContext);
     
@@ -158,6 +163,7 @@ UIRenderer::~UIRenderer()
     glDeleteBuffers(1, &mVBO);
 }
 
+// Setup VAO and VBO 
 void UIRenderer::setupGL()
 {
     glGenVertexArrays(1, &mVAO);
@@ -179,12 +185,14 @@ void UIRenderer::setupGL()
     glBindVertexArray(0);
 }
 
+// Update when window is resized
 void UIRenderer::setWindowSize(int width, int height)
 {
     mWindowWidth = width;
     mWindowHeight = height;
 }
 
+// Start a new frame
 void UIRenderer::beginFrame()
 {
     mQuadVertices.clear();
@@ -192,6 +200,7 @@ void UIRenderer::beginFrame()
     std::print("UIRenderer::beginFrame() - vertices cleared\n");
 }
 
+// render text with the background for readability
 void UIRenderer::renderText(float x, float y, const char* text, float size, Vec4f color)
 {
     std::print("UIRenderer::renderText() called: '{}' at ({}, {})\n", text, x, y);
@@ -206,19 +215,15 @@ void UIRenderer::renderText(float x, float y, const char* text, float size, Vec4
     float bounds[4];
     fonsTextBounds(mFontContext, x, y, text, nullptr, bounds);
     
-    // Render semi-transparent background for readability
     float padding = 4.0f;
     renderQuad(bounds[0] - padding, bounds[1] - padding,
                bounds[2] - bounds[0] + 2*padding, bounds[3] - bounds[1] + 2*padding,
                Vec4f{0.0f, 0.0f, 0.0f, 0.7f});
     
-    // IMPORTANT: Call fonsDrawText to trigger glyph rasterization and texture update
-    // We don't use its rendering, but it populates the font atlas
+    // Force fontstash to rasterize and update texture
     fonsDrawText(mFontContext, x, y, text, nullptr);
 
-    // Get quads for each characte
-    
-    // FONStextIter iter;
+    // Build quads 
     FONStextIter iter;
     FONSquad quad;
     fonsTextIterInit(mFontContext, &iter, x, y, text, nullptr);
@@ -242,6 +247,7 @@ void UIRenderer::renderText(float x, float y, const char* text, float size, Vec4
     }
 }
 
+// Draw bitton and return true if clicked
 bool UIRenderer::renderButton(Button& button, double mouseX, double mouseY, bool mouseDown)
 {
     // Calculate button bounds
@@ -252,13 +258,13 @@ bool UIRenderer::renderButton(Button& button, double mouseX, double mouseY, bool
     float minY = button.y - halfH;
     float maxY = button.y + halfH;
     
-    // Check if mouse is over button
+    // Check if mouse is over the buttons
     bool isHovered = (mouseX >= minX && mouseX <= maxX && 
                      mouseY >= minY && mouseY <= maxY);
     
     bool wasClicked = false;
     
-    // Update button state
+    // Update button state based on mouse interaction
     if (isHovered && mouseDown)
     {
         button.state = ButtonState::Pressed;
@@ -277,7 +283,7 @@ bool UIRenderer::renderButton(Button& button, double mouseX, double mouseY, bool
         button.wasPressed = false;
     }
     
-    // Choose colors based on state
+    // Choose fill and outline colors based on the state
     Vec4f fillColor, outlineColor;
     
     switch (button.state)
@@ -292,7 +298,6 @@ bool UIRenderer::renderButton(Button& button, double mouseX, double mouseY, bool
         break;
     case ButtonState::Pressed:
         fillColor = Vec4f{button.color.x + 0.1f, button.color.y + 0.1f, button.color.z + 0.1f, 0.8f};
-        //outlineColor = Vec4f{button.outlineColor.x - 0.1f, button.outlineColor.y, button.outlineColor.z, 0.0f};
         outlineColor = Vec4f{0.0f, 0.0f, 0.0f, 1.0f};
         break;
     }
@@ -300,14 +305,14 @@ bool UIRenderer::renderButton(Button& button, double mouseX, double mouseY, bool
     // Render filled rectangle
     renderQuad(minX, minY, button.width, button.height, fillColor);
     
-    // Render outline (4 rectangles)
+    // Render outline using 4 thin quads
     float lineWidth = 2.0f;
     renderQuad(minX, minY, button.width, lineWidth, outlineColor);  // Top
     renderQuad(minX, maxY - lineWidth, button.width, lineWidth, outlineColor);  // Bottom
     renderQuad(minX, minY, lineWidth, button.height, outlineColor);  // Left
     renderQuad(maxX - lineWidth, minY, lineWidth, button.height, outlineColor);  // Right
     
-    // Render centered text label
+    // center the text on the button
     float fontSize = 20.0f;
     
     fonsClearState(mFontContext);
@@ -320,7 +325,7 @@ bool UIRenderer::renderButton(Button& button, double mouseX, double mouseY, bool
     Vec4f textColor{1.0f, 1.0f, 1.0f, 1.0f};
 
     
-    // IMPORTANT: Call fonsDrawText to trigger glyph rasterization and texture update
+    // Rasterize glyphs into atlas
     fonsDrawText(mFontContext, button.x, button.y, button.label.c_str(), nullptr);
     
     
@@ -331,39 +336,39 @@ bool UIRenderer::renderButton(Button& button, double mouseX, double mouseY, bool
     while (fonsTextIterNext(mFontContext, &iter, &quad))
     {
         float verts[] = {
-            quad.x0, quad.y0,  quad.s0, quad.t0,  textColor.x, textColor.y, textColor.z, textColor.w,
-            quad.x0, quad.y1,  quad.s0, quad.t1,  textColor.x, textColor.y, textColor.z, textColor.w,
-            quad.x1, quad.y1,  quad.s1, quad.t1,  textColor.x, textColor.y, textColor.z, textColor.w,
-            
-            quad.x0, quad.y0,  quad.s0, quad.t0,  textColor.x, textColor.y, textColor.z, textColor.w,
-            quad.x1, quad.y1,  quad.s1, quad.t1,  textColor.x, textColor.y, textColor.z, textColor.w,
-            quad.x1, quad.y0,  quad.s1, quad.t0,  textColor.x, textColor.y, textColor.z, textColor.w,
+            quad.x0,quad.y0, quad.s0, quad.t0, textColor.x, textColor.y, textColor.z, textColor.w,
+            quad.x0,quad.y1, quad.s0, quad.t1, textColor.x, textColor.y, textColor.z, textColor.w,
+            quad.x1,quad.y1, quad.s1, quad.t1, textColor.x, textColor.y, textColor.z, textColor.w,
+
+            quad.x0,quad.y0, quad.s0, quad.t0, textColor.x, textColor.y, textColor.z, textColor.w,
+            quad.x1,quad.y1, quad.s1, quad.t1, textColor.x, textColor.y, textColor.z, textColor.w,
+            quad.x1,quad.y0, quad.s1, quad.t0, textColor.x, textColor.y, textColor.z, textColor.w,
         };
         
         mTextVertices.insert(mTextVertices.end(), std::begin(verts), std::end(verts));
     }
     
-    return wasClicked;
+    return wasClicked; // only true if button was clicked
 }
 
 void UIRenderer::renderQuad(float x, float y, float w, float h, Vec4f color)
 {
     // Quad without texture (texcoords are 0)
     float verts[] = {
-        x,     y,      0,0,  color.x, color.y, color.z, color.w,
-        x,     y+h,    0,0,  color.x, color.y, color.z, color.w,
-        x+w,   y+h,    0,0,  color.x, color.y, color.z, color.w,
-        
-        x,     y,      0,0,  color.x, color.y, color.z, color.w,
-        x+w,   y+h,    0,0,  color.x, color.y, color.z, color.w,
-        x+w,   y,      0,0,  color.x, color.y, color.z, color.w,
+        x,y, 0,0,color.x, color.y, color.z, color.w,
+        x,y+h,0,0,color.x, color.y, color.z, color.w,
+        x+w,y+h,0,0,color.x, color.y, color.z, color.w,
+
+        x,y, 0,0,color.x, color.y, color.z, color.w,
+        x+w,y+h,0,0,color.x, color.y, color.z, color.w,
+        x+w,y,0,0,color.x, color.y, color.z, color.w,
     };
     
     mQuadVertices.insert(mQuadVertices.end(), std::begin(verts), std::end(verts));
 }
 
 
-
+// Finish frame and render everything
 void UIRenderer::endFrame()
 {
     std::print("=== UIRenderer::endFrame() START ===\n");
@@ -404,7 +409,7 @@ void UIRenderer::endFrame()
     
     glBindVertexArray(mVAO);
     
-    // === PASS 1: Render non-textured quads (backgrounds, outlines) ===
+    // Render non textured quads (backgrounds, outlines)
 if (!mQuadVertices.empty())
     {
         glUniform1i(2, 0);  // uUseTexture = 0 (no texture)
@@ -417,7 +422,7 @@ if (!mQuadVertices.empty())
         glDrawArrays(GL_TRIANGLES, 0, quadVertexCount);
         std::print("  Drew {} quad vertices\n", quadVertexCount);
     }    
-    // === PASS 2: Render textured quads (text glyphs) ===
+    // Render textured quads (text glyphs)
    
 
      if (!mTextVertices.empty())
@@ -425,7 +430,7 @@ if (!mQuadVertices.empty())
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, mFontTexture);
         glUniform1i(1, 0);  // uFontTexture = texture unit 0
-        glUniform1i(2, 1);  // uUseTexture = 1 (use texture)
+        glUniform1i(2, 1);  // uUseTexture = 1
         
         glBindBuffer(GL_ARRAY_BUFFER, mVBO);
         glBufferData(GL_ARRAY_BUFFER, mTextVertices.size() * sizeof(float), 

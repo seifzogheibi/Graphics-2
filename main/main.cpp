@@ -22,6 +22,7 @@
 #include "ufo.hpp"
 #include "loadobj.hpp"
 #include "camera.hpp"
+#include "particles.hpp"
 
 #include <rapidobj/rapidobj.hpp>
 #include "../vmlib/vec2.hpp"
@@ -35,6 +36,7 @@ namespace
 {
     constexpr char const* kWindowTitle = "COMP3811 - CW2";
 
+    // GLFW callbacks
     void glfw_callback_error_( int, char const* );
     void glfw_callback_key_( GLFWwindow*, int, int, int, int );
     void glfw_callback_mouse_button_( GLFWwindow* , int , int , int );
@@ -50,53 +52,37 @@ namespace
         GLFWwindow* window;
     };
 
-    // ---------- Mesh / shader setup ----------
+    // Mesh handle
     struct MeshGL
     {
-        GLuint vao = 0;
+        GLuint  vao = 0;
         GLsizei vertexCount = 0;
     };
 
-    // ---------- Camera / modes ----------
-    Camera gCamera;
-    CameraMode gCameraMode  = CameraMode::Free;
-    bool      gSplitScreenEnabled = false;
-    CameraMode gCameraMode2 = CameraMode::Chase;  // Second view's camera mode
+    // Camera and view modes
+    Camera gCamera; // Primary camera
+    CameraMode gCameraMode = CameraMode::Free; // main view mode
+    bool gSplitScreenEnabled = false;
+    CameraMode gCameraMode2 = CameraMode::Chase;  // second view mode
 
-    // ---------- UFO animation ----------
+    // Task 1.7 Spaceship animation
     struct VehicleAnim
     {
-        bool  active = false; // started at least once
-        bool  paused = false; // toggled by F
-        float time   = 0.f;   // seconds
+        bool active = false; // Animation has started at least once
+        bool paused = false; // Toggled by F / UI button
+        float time   = 0.f; // Seconds since start
     };
     VehicleAnim gUfoAnim;
 
-    // ---------- Particle system ----------
-    struct Particle
-    {
-        Vec3f pos;
-        Vec3f vel;
-        float life;   // <= 0 => dead
-    };
+    // Task 1.10 Particle system
+    ParticleSystem gParticleSystem;
 
-    constexpr int kMaxParticles = 70000;
-
-    Particle gParticles[kMaxParticles];
-    int   gAliveCount          = 0;
-    float gEmissionAccumulator = 0.0f;
-    float gEmissionRate        = 4000.0f;  // particles per second
-
-    GLuint gParticleVAO     = 0;
-    GLuint gParticleVBO     = 0;
-    GLuint gParticleTexture = 0;
-
-    // UI mouse state (for buttons)
-    double gMouseX = 0.0;
+    // UI mouse states for buttons (task 1.11)
+    double gMouseX= 0.0;
     double gMouseY = 0.0;
-    bool   gMouseLeftDown = false;
+    bool gMouseLeftDown = false;
 
-    // ---------- Lighting ----------
+    // Task1.6 Lighting
     struct PointLight
     {
         Vec3f position;
@@ -104,31 +90,11 @@ namespace
         bool  enabled = true;
     };
 
+    // Three colored point lights
     PointLight gPointLights[3];
     bool gDirectionalLightEnabled = true;
 
-    // particle system helper: find a free particle slot
-    int alloc_particle()
-    {
-        for (int i = 0; i < kMaxParticles; ++i)
-        {
-            if (gParticles[i].life <= 0.0f)
-                return i;
-        }
-        return -1;
-    }
-
-    void reset_particles()
-    {
-        for (int i = 0; i < kMaxParticles; ++i)
-        {
-            gParticles[i].life = -1.0f;   // mark all dead
-        }
-        gAliveCount          = 0;
-        gEmissionAccumulator = 0.0f;
-    }
-
-    // Simple cubic Bézier in 3D
+    // Task 1.7 cubic bezier curve
     Vec3f bezier3(
         Vec3f const& A,
         Vec3f const& B,
@@ -139,16 +105,13 @@ namespace
     {
         float it  = 1.f - t;
         float it2 = it * it;
-        float t2  = t  * t;
+        float t2  = t * t;
 
         return
-            (it2 * it) * A +
-            (3.f * it2 * t) * B +
-            (3.f * it  * t2) * C +
-            (t2 * t)        * D;
+            (it2*it) * A +(3.f* it2*t)* B +(3.f*it* t2) *C +(t2*t)* D;
     }
 
-    // ---------- Scene rendering ----------
+    // Scene rendering (terrain, spaceship, pads, particles)
     void renderScene(
         Mat44f const& viewProj,
         Vec3f const& camPosForLighting,
@@ -174,14 +137,9 @@ namespace
     {
         Mat44f terrainMvp   = viewProj * model;
         Mat44f ufoMvp       = viewProj * ufoModel;
-        Mat44f terrainInvT = transpose(invert(model));
-        Mat33f terrainNormal = mat44_to_mat33(terrainInvT);
+        Mat33f normalMatrix = mat44_to_mat33(transpose(invert(model)));
 
-        Mat44f ufoInvT = transpose(invert(ufoModel));
-        Mat33f ufoNormal = mat44_to_mat33(ufoInvT);
-
-
-        // Point light data
+        // Prepare point light arrays 
         Vec3f pointLightPositions[3] = {
             gPointLights[0].position,
             gPointLights[1].position,
@@ -198,37 +156,41 @@ namespace
             gPointLights[2].enabled ? 1 : 0
         };
 
-        // ----- TERRAIN -----
+        // Terrain rendering
         GLuint progId = terrainProgram.programId();
         glUseProgram(progId);
 
         glUniform3fv(2, 1, &lightDir.x);
         glUniform3fv(4, 1, &ambientColor.x);
-        glUniformMatrix3fv(1, 1, GL_TRUE, terrainNormal.v);
+        glUniformMatrix3fv(1, 1, GL_TRUE, normalMatrix.v);
         glUniform3fv(6, 1, &camPosForLighting.x);
-        glUniform1i(17, 1);  // uUseTexture = 1
+        glUniform1i(17, 1); // uUseTexture = 1
+
+        // point lights (positions, colors, enabled)
         glUniform3fv(7, 3, &pointLightPositions[0].x);
         glUniform3fv(10, 3, &pointLightColorsArr[0].x);
         glUniform1iv(13, 3, pointLightEnabledArr);
-        glUniform1i(16, gDirectionalLightEnabled ? 1 : 0);
+        glUniform1i(16, gDirectionalLightEnabled ? 1 : 0); // toggles sunlight
 
-        glUniformMatrix4fv(0, 1, GL_TRUE, terrainMvp.v);
+        glUniformMatrix4fv(0, 1, GL_TRUE, terrainMvp.v); // uViewProj times model
         glUniformMatrix4fv(18, 1, GL_TRUE, model.v);
         glUniform3fv(3, 1, &baseColor.x);
 
+        // bind terrain texture
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, terrainTexture);
         glUniform1i(5, 0);
 
+        // draw terrain
         glBindVertexArray(terrainVAO);
         glDrawArrays(GL_TRIANGLES, 0, (GLsizei)terrainMeshData.positions.size());
         glBindVertexArray(0);
 
         // ----- UFO -----
-        glUniformMatrix3fv(1, 1, GL_TRUE, ufoNormal.v);
+        glUniformMatrix3fv(1, 1, GL_TRUE, normalMatrix.v);
         glUniformMatrix4fv(18, 1, GL_TRUE, ufoModel.v);
         glBindVertexArray(ufoMesh.vao);
-        glUniform1i(17, 0);  // uUseTexture = 0
+        glUniform1i(17, 0); // uUseTexture = 0
 
         // Make diffuse/tint colour neutral so vertex colours are used directly
         Vec3f ufoTint{ 1.0f, 1.0f, 1.0f };
@@ -246,11 +208,11 @@ namespace
         glBindVertexArray(0);
 
 
-        // ----- LANDING PADS -----
+        // Landing pads rendering
         GLuint landingProgId = landingProgram.programId();
         glUseProgram(landingProgId);
 
-        glUniformMatrix3fv(1, 1, GL_TRUE, terrainNormal.v);
+        glUniformMatrix3fv(1, 1, GL_TRUE, normalMatrix.v);
         glUniform3fv(2, 1, &lightDir.x);
         glUniform3fv(4, 1, &ambientColor.x);
         glUniform3fv(6, 1, &camPosForLighting.x);
@@ -261,11 +223,13 @@ namespace
 
         glBindVertexArray(landingVao);
 
+        // first pad
         Mat44f lpModel1 = make_translation(landingPadPos1);
         glUniformMatrix4fv(0, 1, GL_TRUE, viewProj.v);
         glUniformMatrix4fv(17, 1, GL_TRUE, lpModel1.v);
         glDrawArrays(GL_TRIANGLES, 0, (GLsizei)landingMeshData.positions.size());
 
+        // second pad
         Mat44f lpModel2 = make_translation(landingPadPos2);
         glUniformMatrix4fv(0, 1, GL_TRUE, viewProj.v);
         glUniformMatrix4fv(17, 1, GL_TRUE, lpModel2.v);
@@ -273,43 +237,21 @@ namespace
 
         glBindVertexArray(0);
 
-        // ====================
-        // Draw PARTICLES (exhaust)
-        // ====================
-        if (gAliveCount > 0)
-        {
-            GLuint particleProgId = particleProgram.programId();
-            glUseProgram(particleProgId);
-
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            glDepthMask(GL_FALSE);
-
-            glUniformMatrix4fv(0, 1, GL_TRUE, viewProj.v); // uViewProj
-            glUniform1f(1, 6.f);                           // uPointSize
-            glUniform3fv(4, 1, &camPosForLighting.x);
-
-            Vec3f exhaustColor{ 0.9f, 0.9f, 1.0f };
-            glUniform3fv(2, 1, &exhaustColor.x);          // uColor
-
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, gParticleTexture);
-            glUniform1i(3, 0);                            // uTexture
-
-            glBindVertexArray(gParticleVAO);
-            glDrawArrays(GL_POINTS, 0, gAliveCount);
-            glBindVertexArray(0);
-
-            glDepthMask(GL_TRUE);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        }
+        // Particle rendering
+        renderParticles(
+            gParticleSystem,
+            particleProgram.programId(),
+            viewProj.v,
+            camPosForLighting
+        );
     }
 
-} // anonymous namespace
+} // namespace
 
 
 int main() try
 {
-    // Initialize GLFW
+    // GLFW initialization and window creation
     if( GLFW_TRUE != glfwInit() )
     {
         char const* msg = nullptr;
@@ -317,10 +259,11 @@ int main() try
         throw Error( "glfwInit() failed with '{}' ({})", msg, ecode );
     }
 
-    GLFWCleanupHelper cleanupHelper;
+    GLFWCleanupHelper cleanupHelper; 
 
-    glfwSetErrorCallback( &glfw_callback_error_ );
+    glfwSetErrorCallback( &glfw_callback_error_ ); // error callback
 
+    // GLFW window hints
     glfwWindowHint( GLFW_SRGB_CAPABLE, GLFW_TRUE );
     glfwWindowHint( GLFW_DOUBLEBUFFER, GLFW_TRUE );
     glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, 4 );
@@ -330,7 +273,7 @@ int main() try
     glfwWindowHint( GLFW_DEPTH_BITS, 24 );
 
 #   if !defined(NDEBUG)
-    glfwWindowHint( GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE );
+    glfwWindowHint( GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE ); // debug context
 #   endif
 
     GLFWwindow* window = glfwCreateWindow(
@@ -340,7 +283,7 @@ int main() try
         nullptr, nullptr
     );
 
-    if( !window )
+    if( !window ) // window failed
     {
         char const* msg = nullptr;
         int ecode = glfwGetError( &msg );
@@ -349,13 +292,15 @@ int main() try
 
     GLFWWindowDeleter windowDeleter{ window };
 
+    // Input callbacks
     glfwSetMouseButtonCallback( window, &glfw_callback_mouse_button_ );
     glfwSetCursorPosCallback( window, &glfw_callback_cursor_pos_ );
     glfwSetKeyCallback( window, &glfw_callback_key_ );
 
     glfwMakeContextCurrent( window );
-    glfwSwapInterval( 1 ); // V-Sync
+    glfwSwapInterval( 1 ); // vsync on
 
+    // GLAD (OpenGL loader)
     if( !gladLoadGLLoader( (GLADloadproc)&glfwGetProcAddress ) )
         throw Error( "gladLoadGLLoader() failed - cannot load GL API!" );
 
@@ -372,12 +317,12 @@ int main() try
     OGL_CHECKPOINT_ALWAYS();
 
     // Global GL state
-    glEnable(GL_DEPTH_TEST);
-    glEnable(GL_CULL_FACE);
-    glEnable(GL_FRAMEBUFFER_SRGB);
+    glEnable(GL_DEPTH_TEST); // depth testing enabled
+    glEnable(GL_CULL_FACE); // backface culling enabled
+    glEnable(GL_FRAMEBUFFER_SRGB); 
     glClearColor(0.2f, 0.2f, 0.2f, 1.f);
 
-    // For point sprites
+    // point size and blending for particles
     glEnable(GL_PROGRAM_POINT_SIZE);
     glEnable(GL_BLEND);
 
@@ -389,7 +334,7 @@ int main() try
 
     OGL_CHECKPOINT_ALWAYS();
 
-    // Terrain
+    // terrain mesh loading and shader setup
     SimpleMeshData terrainMeshData = load_wavefront_obj("assets/cw2/parlahti.obj");
     GLuint terrainVAO = create_vao(terrainMeshData);
 
@@ -398,13 +343,13 @@ int main() try
         { GL_FRAGMENT_SHADER, "assets/cw2/default.frag" }
     });
 
-    // Static transforms + light
+    // World transform for terrain
     Mat44f model = kIdentity44f;
 
-    Vec3f lightDir     = normalize(Vec3f{ 0.f, 1.f, -1.f });
-    Vec3f baseColor    = { 0.6f, 0.7f, 0.6f };
+    // Task1.6 Lighting colors
+    Vec3f lightDir = normalize(Vec3f{ 0.f, 1.f, -1.f }); // light direction
+    Vec3f baseColor = { 0.6f, 0.7f, 0.6f };
     Vec3f ambientColor = { 0.18f, 0.18f, 0.18f };
-    Vec3f diffuseColor = { 0.6f, 0.6f, 0.6f }; // unused
 
     
     // =====================
@@ -708,6 +653,7 @@ SimpleMeshData blueLightCube = make_cube(
 
     SimpleMeshData ufoMeshData = concatenate(baseMesh, topMesh);
 
+    // Create VAO for the spaceship
     MeshGL ufoMesh;
     GLuint ufoVAO = create_vao(ufoMeshData);
     ufoMesh.vao         = ufoVAO;
@@ -716,86 +662,59 @@ SimpleMeshData blueLightCube = make_cube(
     GLuint terrainTexture =
         load_texture_2d( (ASSETS + terrainMeshData.texture_filepath).c_str() );
 
+    // Landing pad shaders
     ShaderProgram landingProgram({
         { GL_VERTEX_SHADER,   "assets/cw2/landing.vert" },
         { GL_FRAGMENT_SHADER, "assets/cw2/landing.frag" }
     });
 
-    // Landing pads
+    // Landing pad positions
     Vec3f landingPadPos1{ -11.50f, -0.96f, -54.f };
-    Vec3f landingPadPos2{  8.f,    -0.96f,  40.f };
+    Vec3f landingPadPos2{   8.f,   -0.96f,  40.f };
 
     SimpleMeshData landingMeshData =
-        load_wavefront_obj("assets/cw2/landingpad.obj");
+    load_wavefront_obj("assets/cw2/landingpad.obj");
     GLuint landingVao = create_vao(landingMeshData);
 
-    // UI
+    // UI setup (task 1.11)
     ShaderProgram uiShader({
-        { GL_VERTEX_SHADER,   "assets/cw2/ui.vert" },
-        { GL_FRAGMENT_SHADER, "assets/cw2/ui.frag" }
+        {GL_VERTEX_SHADER,"assets/cw2/ui.vert"},
+        {GL_FRAGMENT_SHADER,"assets/cw2/ui.frag"}
     });
 
-    UIRenderer uiRenderer(1280, 720, uiShader);
+    UIRenderer uiRenderer(1280, 720, uiShader); // initial size
 
     Button launchButton{"Launch", 0, 0, 120, 40,
                         {0.0f, 0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}};
     Button resetButton{"Reset", 0, 0, 120, 40,
                        {0.5f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}};
 
-    // Point lights
-    gPointLights[0].color = Vec3f{ 1.f, 0.f, 0.f };
-    gPointLights[1].color = Vec3f{ 0.f, 1.f, 0.f };
-    gPointLights[2].color = Vec3f{ 0.f, 0.f, 1.f };
+    // Point lights attached to the spaceship
+    gPointLights[0].color = Vec3f{ 1.f, 0.f, 0.f }; //red
+    gPointLights[1].color = Vec3f{ 0.f, 1.f, 0.f }; // green
+    gPointLights[2].color = Vec3f{ 0.f, 0.f, 1.f }; // blue
 
     gPointLights[0].enabled = true;
     gPointLights[1].enabled = true;
     gPointLights[2].enabled = true;
     gDirectionalLightEnabled = true;
 
-    // Particle system shaders
+    // Particle system shaders and initialization
     ShaderProgram particleProgram({
-        { GL_VERTEX_SHADER,   "assets/cw2/particle.vert" },
-        { GL_FRAGMENT_SHADER, "assets/cw2/particle.frag" }
+        {GL_VERTEX_SHADER, "assets/cw2/particle.vert"},
+        {GL_FRAGMENT_SHADER, "assets/cw2/particle.frag"}
     });
 
-    // Allocate particle buffers
-    glGenVertexArrays(1, &gParticleVAO);
-    glGenBuffers(1,      &gParticleVBO);
-
-    glBindVertexArray(gParticleVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, gParticleVBO);
-
-    glBufferData(
-        GL_ARRAY_BUFFER,
-        kMaxParticles * sizeof(Vec3f),
-        nullptr,
-        GL_DYNAMIC_DRAW
-    );
-
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(
-        0, 3, GL_FLOAT, GL_FALSE,
-        sizeof(Vec3f),
-        (void*)0
-    );
-
-    glBindVertexArray(0);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-    gParticleTexture = load_texture_2d("assets/cw2/particle.png", false);
-    for (int i = 0; i < kMaxParticles; ++i)
-        gParticles[i].life = -1.0f;
-
-    gAliveCount          = 0;
-    gEmissionAccumulator = 0.0f;
+    initParticleSystem(gParticleSystem, "assets/cw2/particle.png");
 
     OGL_CHECKPOINT_ALWAYS();
 
-    // ========== MAIN LOOP ==========
+    // Main loop
     while( !glfwWindowShouldClose( window ) )
     {
         glfwPollEvents();
 
+        // Framebuffer size and viewport
         float fbwidth, fbheight;
         {
             int nwidth, nheight;
@@ -803,6 +722,7 @@ SimpleMeshData blueLightCube = make_cube(
             fbwidth  = float(nwidth);
             fbheight = float(nheight);
 
+            // pauses if window is minimized
             if( 0 == nwidth || 0 == nheight )
             {
                 do
@@ -815,24 +735,24 @@ SimpleMeshData blueLightCube = make_cube(
             glViewport( 0, 0, nwidth, nheight );
         }
 
-        // Time step
+        // Time step (dt)
         static double lastTime = glfwGetTime();
-        double currentTime     = glfwGetTime();
+        double currentTime = glfwGetTime();
         float dt = static_cast<float>(currentTime - lastTime);
         lastTime = currentTime;
 
         if (gUfoAnim.active && !gUfoAnim.paused)
             gUfoAnim.time += dt;
 
-        // Projection
-        float aspect     = fbwidth / fbheight;
+        // Task 1.7 Projection 
+        float aspect = fbwidth / fbheight;
         float fovRadians = 60.0f * std::numbers::pi_v<float> / 180.0f;
-        float zNear      = 0.1f;
-        float zFar       = 250.0f;
+        float zNear = 0.1f;
+        float zFar = 250.0f;
 
         Mat44f proj = make_perspective_projection(fovRadians, aspect, zNear, zFar);
 
-        // ===== UFO animation =====
+        // spaceship above first landing pad
         Vec3f ufoStartPos{
             landingPadPos1.x,
             landingPadPos1.y + 1.3f,
@@ -847,6 +767,7 @@ SimpleMeshData blueLightCube = make_cube(
         Vec3f lightOffset2{ -0.5f * lightRadius, bulbRingY - 0.35f,
                             -0.866025f * lightRadius };
 
+        // inital spaceship before launching (erect on landing pad)
         Vec3f ufoPos    = ufoStartPos;
         Vec3f forwardWS{ 0.f, 1.f, 0.f };
         Vec3f rightWS  { 1.f, 0.f, 0.f };
@@ -856,7 +777,7 @@ SimpleMeshData blueLightCube = make_cube(
 
         if (gUfoAnim.active)
         {
-            float totalTime = 12.0f;
+            float totalTime = 12.0f; // duration of animation
             float tAnim = gUfoAnim.time;
             if (tAnim < 0.f)       tAnim = 0.f;
             if (tAnim > totalTime) tAnim = totalTime;
@@ -871,13 +792,15 @@ SimpleMeshData blueLightCube = make_cube(
             float y0 = ufoStartPos.y;
             float z0 = ufoStartPos.z;
 
+            // Bezier controls for curved take off path
             Vec3f A = ufoStartPos;
-            Vec3f B{ x0, y0 + maxHeight * 0.7f,  z0 };
-            Vec3f C{ x0, y0 + maxHeight,         z0 + rangeZ * 0.55f };
-            Vec3f D{ x0, y0 + maxHeight * 0.2f,  z0 + rangeZ };
+            Vec3f B{ x0, y0 + maxHeight * 0.7f,z0 };
+            Vec3f C{ x0, y0 + maxHeight, z0 + rangeZ * 0.55f };
+            Vec3f D{ x0, y0 + maxHeight * 0.2f, z0 + rangeZ };
 
-            ufoPos = bezier3(A, B, C, D, u);
+            ufoPos = bezier3(A, B, C, D, u); // position on curve
 
+            // approximates tangent by sampling slightly ahead on the curve
             float eps = 0.001f;
             float u2 = u + eps;
             if (u2 > 1.0f) u2 = 1.0f;
@@ -900,12 +823,14 @@ SimpleMeshData blueLightCube = make_cube(
         }
         else
         {
+            // space ship pointing upwards on landing pad before launch (idle)
             ufoPos    = ufoStartPos;
             forwardWS = Vec3f{ 0.f, 1.f, 0.f };
             rightWS   = Vec3f{ 1.f, 0.f, 0.f };
             upWS      = Vec3f{ 0.f, 0.f, 1.f };
         }
 
+        // Orient spaceship to follow path direction
         float fy = std::clamp(forwardWS.y, -1.0f, 1.0f);
         float ufoYaw   = std::atan2(forwardWS.x, -forwardWS.z);
         float ufoPitch = std::asin(fy);
@@ -916,6 +841,7 @@ SimpleMeshData blueLightCube = make_cube(
             make_rotation_x(ufoPitch) *
             make_rotation_z(ufoRoll);
 
+        // realigns the spaceships mesh axes to world axes
         Mat44f ufoRot =
             ufoOrient *
             make_rotation_y(std::numbers::pi_v<float>) *
@@ -926,87 +852,27 @@ SimpleMeshData blueLightCube = make_cube(
             ufoRot *
             make_scaling(0.5f, 0.5f, 0.5f);
 
-        // Attach point lights to UFO
+        // Attach point lights to the spaceship's body
         gPointLights[0].position = ufoPos + lightOffset0;
         gPointLights[1].position = ufoPos + lightOffset1;
         gPointLights[2].position = ufoPos + lightOffset2;
 
-        // --------- Particle simulation ---------
+        // Particle emission and simulation
         if (gUfoAnim.active && !gUfoAnim.paused)
         {
             Vec3f enginePos = ufoPos - forwardWS * 1.2f;
-
-            gEmissionAccumulator += gEmissionRate * dt;
-            int toSpawn = (int)gEmissionAccumulator;
-            if (toSpawn > 0)
-                gEmissionAccumulator -= (float)toSpawn;
-
-            Vec3f baseVel = -forwardWS * 7.0f;
-
-            const float spreadRadius   = 0.2f;
-            const float verticalSpread = 0.4f;
-
-            for (int n = 0; n < toSpawn; ++n)
-            {
-                int idx = alloc_particle();
-                if (idx < 0)
-                    break;
-
-                float u1 = std::rand() / float(RAND_MAX);
-                float u2r = std::rand() / float(RAND_MAX);
-
-                float r     = spreadRadius * std::sqrt(u1);
-                float theta = 2.0f * std::numbers::pi_v<float> * u2r;
-
-                float dx = r * std::cos(theta);
-                float dz = r * std::sin(theta);
-                float dy = (std::rand() / float(RAND_MAX) - 0.5f) * verticalSpread;
-
-                Vec3f offset = rightWS * dx + upWS * dz;
-
-                Vec3f jitter{
-                    (std::rand() / float(RAND_MAX) - 0.5f) * 4.0f,
-                    (std::rand() / float(RAND_MAX) - 0.5f) * 2.f,
-                    (std::rand() / float(RAND_MAX) - 0.5f) * 4.0f
-                };
-
-                Vec3f vel = baseVel + jitter;
-
-                float tFrac = std::rand() / float(RAND_MAX);
-                Vec3f substepOffset = vel * (tFrac * dt);
-
-                gParticles[idx].pos  = enginePos + offset + substepOffset;
-                gParticles[idx].vel  = vel;
-
-                float lifeRand = std::rand() / float(RAND_MAX);  // [0,1]
-                gParticles[idx].life = 0.6f + 0.6f * lifeRand;   // [0.6, 1.2] seconds
-
-            }
+            emitParticles(gParticleSystem, dt, enginePos, forwardWS, rightWS, upWS);
         }
 
         if (!gUfoAnim.paused)
         {
-            for (int i = 0; i < kMaxParticles; ++i)
-            {
-                if (gParticles[i].life > 0.0f)
-                {
-                    gParticles[i].life -= dt;
-                    if (gParticles[i].life > 0.0f)
-                    {
-                        gParticles[i].pos =
-                            gParticles[i].pos + gParticles[i].vel * dt;
-
-                        if (gParticles[i].pos.y < -0.98f)
-                            gParticles[i].life = 0.0f;
-                    }
-                }
-            }
+            updateParticles(gParticleSystem, dt);
         }
 
-        // Camera movement (WASD etc.)
+        // Camera movement
         updateCameraMovement(gCamera, dt);
 
-        // Update button positions (bottom centre)
+        // Update button positions
         float buttonY = fbheight - 60.0f;
         launchButton.x = fbwidth / 2.0f - 70.0f;
         launchButton.y = buttonY;
@@ -1014,34 +880,16 @@ SimpleMeshData blueLightCube = make_cube(
         resetButton.y  = buttonY;
 
         // Upload alive particles to VBO
-        static Vec3f particlePositions[kMaxParticles];
-        int alive = 0;
-        for (int i = 0; i < kMaxParticles; ++i)
-        {
-            if (gParticles[i].life > 0.0f)
-                particlePositions[alive++] = gParticles[i].pos;
-        }
-        gAliveCount = alive;
+        uploadParticleData(gParticleSystem);
 
-        if (gAliveCount > 0)
-        {
-            glBindBuffer(GL_ARRAY_BUFFER, gParticleVBO);
-            glBufferSubData(
-                GL_ARRAY_BUFFER,
-                0,
-                gAliveCount * sizeof(Vec3f),
-                particlePositions
-            );
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
-        }
-
-        // ===== DRAW =====
+        // Begin rendering (draw scene)
         OGL_CHECKPOINT_DEBUG();
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         if (!gSplitScreenEnabled)
         {
+            // Single fullscreen view
             glViewport(0, 0,
                        (int)fbwidth,
                        (int)fbheight);
@@ -1081,11 +929,13 @@ SimpleMeshData blueLightCube = make_cube(
         }
         else
         {
+            // Task 1.9
+            // Split screen left and right views
             int leftWidth  = (int)fbwidth / 2;
             int rightWidth = (int)fbwidth - leftWidth;
             int fullHeight = (int)fbheight;
 
-            // Left view
+            // Left view (primary camera)
             glViewport(0, 0, leftWidth, fullHeight);
             float aspectLeft = float(leftWidth) / float(fullHeight);
             Mat44f projLeft =
@@ -1124,7 +974,7 @@ SimpleMeshData blueLightCube = make_cube(
                 particleProgram
             );
 
-            // Right view
+            // Right view (secondary camera mode)
             glViewport(leftWidth, 0, rightWidth, fullHeight);
             float aspectRight = float(rightWidth) / float(fullHeight);
             Mat44f projRight =
@@ -1163,16 +1013,17 @@ SimpleMeshData blueLightCube = make_cube(
                 particleProgram
             );
 
+            // Restore full viewport
             glViewport(0, 0, (int)fbwidth, (int)fbheight);
         }
 
-        // ----- UI -----
+        // Draws UI overlay  (altitude and control buttons)
         uiRenderer.setWindowSize((int)fbwidth, (int)fbheight);
         uiRenderer.beginFrame();
 
+        // Altitude in top left
         char altitudeText[64];
-        std::snprintf(altitudeText, sizeof(altitudeText),
-                      "Altitude: %.1f m", ufoPos.y);
+        std::snprintf(altitudeText, sizeof(altitudeText),"Altitude: %.1f m", ufoPos.y);
         uiRenderer.renderText(
             10.0f, 10.0f,
             altitudeText,
@@ -1180,13 +1031,14 @@ SimpleMeshData blueLightCube = make_cube(
             Vec4f{1.0f, 1.0f, 1.0f, 1.0f}
         );
 
+        // Launch button (start/pause animation)
         if (uiRenderer.renderButton(launchButton, gMouseX, gMouseY, gMouseLeftDown))
         {
             if (!gUfoAnim.active)
             {
                 gUfoAnim.active = true;
                 gUfoAnim.paused = false;
-                gUfoAnim.time   = 0.f;
+                gUfoAnim.time = 0.f;
             }
             else
             {
@@ -1194,16 +1046,17 @@ SimpleMeshData blueLightCube = make_cube(
             }
         }
 
+        // Reset button (stops animation and clears particles)
         if (uiRenderer.renderButton(resetButton, gMouseX, gMouseY, gMouseLeftDown))
         {
             gUfoAnim.active = false;
             gUfoAnim.paused = false;
-            gUfoAnim.time   = 0.f;
+            gUfoAnim.time = 0.f;
 
-            reset_particles();
+            resetParticles(gParticleSystem);
         }
 
-        uiRenderer.endFrame();
+        uiRenderer.endFrame(); // flush the UI
 
         glfwSwapBuffers( window );
     }
@@ -1219,7 +1072,7 @@ catch( std::exception const& eErr )
 }
 
 
-// ======================= CALLBACKS =======================
+// CALLBACKS
 namespace
 {
     void glfw_callback_error_( int aErrNum, char const* aErrDesc )
@@ -1237,6 +1090,7 @@ namespace
             return;
         }
 
+        // Movement controls
         if (aKey == GLFW_KEY_W)
             gCamera.moveForward = pressed || (aAction == GLFW_REPEAT);
         else if (aKey == GLFW_KEY_S)
@@ -1269,7 +1123,7 @@ namespace
         if (aKey == GLFW_KEY_LEFT_CONTROL || aKey == GLFW_KEY_RIGHT_CONTROL)
             gCamera.slow = pressed || (aAction == GLFW_REPEAT);
 
-        // UFO animation controls
+        // Spaceship animation controls (keyboard)
         if (aKey == GLFW_KEY_F && aAction == GLFW_PRESS)
         {
             if (!gUfoAnim.active)
@@ -1289,14 +1143,14 @@ namespace
             gUfoAnim.active = false;
             gUfoAnim.paused = false;
             gUfoAnim.time   = 0.f;
-            reset_particles();
+            resetParticles(gParticleSystem);
         }
 
-        // Toggle split screen with V
+        // Toggles splitscreen with V
         if (aKey == GLFW_KEY_V && aAction == GLFW_PRESS)
             gSplitScreenEnabled = !gSplitScreenEnabled;
 
-        // Camera mode cycling (Shift+C for right view)
+        // Camera mode cycling (C for left, Shift+C for right)
         if (aKey == GLFW_KEY_C && aAction == GLFW_PRESS)
         {
             bool shiftPressed =
@@ -1305,6 +1159,7 @@ namespace
 
             if (shiftPressed)
             {
+                // Cycle secondary camera mode
                 if (gCameraMode2 == CameraMode::Free)
                     gCameraMode2 = CameraMode::Chase;
                 else if (gCameraMode2 == CameraMode::Chase)
@@ -1314,6 +1169,7 @@ namespace
             }
             else
             {
+                // Cycle main camera mode
                 if (gCameraMode == CameraMode::Free)
                     gCameraMode  = CameraMode::Chase;
                 else if (gCameraMode == CameraMode::Chase)
@@ -1329,6 +1185,7 @@ namespace
         if (button == GLFW_MOUSE_BUTTON_LEFT)
             gMouseLeftDown = (action == GLFW_PRESS);
 
+        // Right mouse button toggles mouse capture for camera look
         if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS)
         {
             gCamera.mouseCaptured = !gCamera.mouseCaptured;
