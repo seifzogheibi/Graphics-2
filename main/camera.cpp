@@ -33,10 +33,20 @@ CameraResult computeCameraView(
         // Project forward onto horizontal plane
         Vec3f fHoriz{ f.x, 0.f, f.z };
         float len = length(fHoriz);
+
+        Vec3f defaultDir{ 0.f, 0.f, -1.f }; // default direction when rocket is vertical
+        float blendThreshold = 0.3f; // threshold for blending
         if (len < 1e-3f)
-            fHoriz = Vec3f{ 0.f, 0.f, -1.f }; // fallback forward
-        else
-            fHoriz = fHoriz / len; // normalize
+            fHoriz = defaultDir;
+        else{
+            Vec3f calculatedDir = fHoriz / len; // normalize
+        
+        // Blend factor: 0 when len is small, 1 when len > blendThreshold
+        float blend = std::min(1.0f, len / blendThreshold);
+        
+        // Smoothly interpolate between default and calculated direction
+        fHoriz = normalize(defaultDir * (1.0f - blend) + calculatedDir * blend);
+        }
 
         float distBack   = 7.0f; // distance behind spaceship
         float heightUp   = 1.0f; // height above spaceship
