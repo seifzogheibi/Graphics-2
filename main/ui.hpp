@@ -11,6 +11,7 @@
 #include "../vmlib/mat44.hpp"
 #include "../support/program.hpp"
 
+// Button state
 enum class ButtonState
 {
     Normal,
@@ -18,17 +19,19 @@ enum class ButtonState
     Pressed
 };
 
+// UI Button
 struct Button
 {
     std::string label;
     float x, y;          // Center position
     float width, height;
     Vec3f color;
-    Vec3f outlineColor; // Use these!!
-    ButtonState state = ButtonState::Normal;
-    bool wasPressed = false;
+    Vec3f outlineColor; // border color
+    ButtonState state = ButtonState::Normal; // current state
+    bool wasPressed = false; // pressed in previous frame
 };
 
+// UI Renderer class (text and buttons)
 class UIRenderer
 {
 public:
@@ -43,21 +46,21 @@ public:
 
 private:
     void setupGL();
-    void renderQuad(float x, float y, float w, float h, Vec4f color);
+    void renderQuad(float x, float y, float w, float h, Vec4f color); // colored quad
     void uploadVertices();
     
     int mWindowWidth;
     int mWindowHeight;
     
-    FONScontext* mFontContext;
-    int mFont;
+    FONScontext* mFontContext; // Fontstash context
+    int mFont; // Font handle
     
     ShaderProgram& mShader;
     GLuint mVAO;
     GLuint mVBO;
     GLuint mFontTexture;
     
-    std::vector<float> mQuadVertices;  // Non-textured (backgrounds, outlines)
+    std::vector<float> mQuadVertices;  // Solid quads (backgrounds, outlines)
     std::vector<float> mTextVertices;  // Textured (font glyphs)
 
 };
