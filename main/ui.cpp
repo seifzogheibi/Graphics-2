@@ -3,6 +3,9 @@
 #include <stdexcept>
 #include <print>
 
+// Uncomment the line below to enable UI debug output
+// #define UI_DEBUG_PRINTS
+
 // Helper to create fontstash texture and update it
 namespace
 {
@@ -19,8 +22,10 @@ namespace
     
         
         glGenTextures(1, &gl->texture);
+#ifdef UI_DEBUG_PRINTS
         std::print("glfonsRenderCreate: Created texture ID {} ({}x{})\n", 
                gl->texture, width, height);
+#endif
         glBindTexture(GL_TEXTURE_2D, gl->texture);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, width, height, 0, GL_RED, GL_UNSIGNED_BYTE, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -44,35 +49,38 @@ namespace
     
     // Update a region of  atlas
     void glfonsRenderUpdate(void* userPtr, int* rect, const unsigned char* data)
-{
-    std::print("glfonsRenderUpdate called: rect=[{},{},{},{}]\n", 
-        rect[0], rect[1], rect[2], rect[3]);
+    {
+#ifdef UI_DEBUG_PRINTS
+        std::print("glfonsRenderUpdate called: rect=[{},{},{},{}]\n", 
+            rect[0], rect[1], rect[2], rect[3]);
+#endif
 
-    auto* gl = static_cast<GLFONScontext*>(userPtr);
-    
-    int x = rect[0];
-    int y = rect[1];
-    int w = rect[2] - rect[0];
-    int h = rect[3] - rect[1];
-    
-    if (w <= 0 || h <= 0) return;
-    
-    glBindTexture(GL_TEXTURE_2D, gl->texture);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1); // set alignment to 1 byte
-    
-    // Set row length to 512 (the full width of atlas)
-    glPixelStorei(GL_UNPACK_ROW_LENGTH, 512);
-    
-    // Offset into the data for the updated region
-    const unsigned char* subData = data + x + (y * 512);
-    
-    glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, w, h, GL_RED, GL_UNSIGNED_BYTE, subData);
-    
-    // Reset row length to default
-    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
-    
-    glBindTexture(GL_TEXTURE_2D, 0);
-}
+        auto* gl = static_cast<GLFONScontext*>(userPtr);
+        
+        int x = rect[0];
+        int y = rect[1];
+        int w = rect[2] - rect[0];
+        int h = rect[3] - rect[1];
+        
+        if (w <= 0 || h <= 0) return;
+        
+        glBindTexture(GL_TEXTURE_2D, gl->texture);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1); // set alignment to 1 byte
+        
+        // Set row length to 512 (the full width of atlas)
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, 512);
+        
+        // Offset into the data for the updated region
+        const unsigned char* subData = data + x + (y * 512);
+        
+        glTexSubImage2D(GL_TEXTURE_2D, 0, x, y, w, h, GL_RED, GL_UNSIGNED_BYTE, subData);
+        
+        // Reset row length to default
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+        
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
+
     // not used, drawing handled in UIRenderer
     void glfonsRenderDraw(void* userPtr, const float* verts, const float* tcoords, 
         const unsigned int* colors, int nverts)
@@ -103,18 +111,24 @@ UIRenderer::UIRenderer(int windowWidth, int windowHeight, ShaderProgram& shader)
     , mShader(shader) // reference to shader program
     , mFontTexture(0) // will be created in fontstash
 {
+#ifdef UI_DEBUG_PRINTS
     std::print("UIRenderer: Using shader program with ID: {}\n", mShader.programId());
+#endif
 
     // Checks if shader program is linked
     GLint isLinked = 0;
     glGetProgramiv(mShader.programId(), GL_LINK_STATUS, &isLinked);
     if (isLinked == GL_FALSE)
     {
+#ifdef UI_DEBUG_PRINTS
         std::print("ERROR: UI shader program failed to link!\n");
+#endif
     }
     else
     {
+#ifdef UI_DEBUG_PRINTS
         std::print("UI shader program linked successfully\n");
+#endif
     }
 
     // Create fontstash context
@@ -136,7 +150,9 @@ UIRenderer::UIRenderer(int windowWidth, int windowHeight, ShaderProgram& shader)
         throw std::runtime_error("Failed to create font context");
     }
 
+#ifdef UI_DEBUG_PRINTS
     std::print("UIRenderer: Loading font...\n");
+#endif
     
     // Load the font
     mFont = fonsAddFont(mFontContext, "sans", "assets/cw2/DroidSansMonoDotted.ttf");
@@ -144,13 +160,17 @@ UIRenderer::UIRenderer(int windowWidth, int windowHeight, ShaderProgram& shader)
         throw std::runtime_error("Failed to load font");
     }
 
+#ifdef UI_DEBUG_PRINTS
     std::print("UIRenderer: Font loaded successfully!\n");
+#endif
     
     // keep atlas texture ID
     mFontTexture = gl->texture;
     
     setupGL();
+#ifdef UI_DEBUG_PRINTS
     std::print("UIRenderer: Initialization complete!\n");
+#endif
 }
 
 UIRenderer::~UIRenderer()
@@ -197,13 +217,17 @@ void UIRenderer::beginFrame()
 {
     mQuadVertices.clear();
     mTextVertices.clear();
+#ifdef UI_DEBUG_PRINTS
     std::print("UIRenderer::beginFrame() - vertices cleared\n");
+#endif
 }
 
 // render text with the background for readability
 void UIRenderer::renderText(float x, float y, const char* text, float size, Vec4f color)
 {
+#ifdef UI_DEBUG_PRINTS
     std::print("UIRenderer::renderText() called: '{}' at ({}, {})\n", text, x, y);
+#endif
 
     // Setup fontstash
     fonsClearState(mFontContext);
@@ -371,16 +395,22 @@ void UIRenderer::renderQuad(float x, float y, float w, float h, Vec4f color)
 // Finish frame and render everything
 void UIRenderer::endFrame()
 {
+#ifdef UI_DEBUG_PRINTS
     std::print("=== UIRenderer::endFrame() START ===\n");
     std::print("Quad vertices: {}, Text vertices: {}\n", mQuadVertices.size(), mTextVertices.size());
+#endif
     
     if (mQuadVertices.empty() && mTextVertices.empty())
     {
+#ifdef UI_DEBUG_PRINTS
         std::print("No vertices to render!\n");
+#endif
         return;
     }
     
+#ifdef UI_DEBUG_PRINTS
     std::print("Window size: {}x{}\n", mWindowWidth, mWindowHeight);
+#endif
     
     // Save GL state
     GLboolean wasBlendEnabled = glIsEnabled(GL_BLEND);
@@ -410,7 +440,7 @@ void UIRenderer::endFrame()
     glBindVertexArray(mVAO);
     
     // Render non textured quads (backgrounds, outlines)
-if (!mQuadVertices.empty())
+    if (!mQuadVertices.empty())
     {
         glUniform1i(2, 0);  // uUseTexture = 0 (no texture)
         
@@ -420,12 +450,13 @@ if (!mQuadVertices.empty())
         
         int quadVertexCount = mQuadVertices.size() / 8;
         glDrawArrays(GL_TRIANGLES, 0, quadVertexCount);
+#ifdef UI_DEBUG_PRINTS
         std::print("  Drew {} quad vertices\n", quadVertexCount);
+#endif
     }    
     // Render textured quads (text glyphs)
    
-
-     if (!mTextVertices.empty())
+    if (!mTextVertices.empty())
     {
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, mFontTexture);
@@ -438,7 +469,9 @@ if (!mQuadVertices.empty())
         
         int textVertexCount = mTextVertices.size() / 8;
         glDrawArrays(GL_TRIANGLES, 0, textVertexCount);
+#ifdef UI_DEBUG_PRINTS
         std::print("  Drew {} text vertices\n", textVertexCount);
+#endif
     }
     
     
@@ -450,41 +483,57 @@ if (!mQuadVertices.empty())
     if (wasCullFaceEnabled) glEnable(GL_CULL_FACE);
     if (wasSRGBEnabled) glEnable(GL_FRAMEBUFFER_SRGB);
     
+#ifdef UI_DEBUG_PRINTS
     std::print("=== UIRenderer::endFrame() COMPLETE ===\n\n");
+#endif
 }
 
 void UIRenderer::uploadVertices()
 {
+#ifdef UI_DEBUG_PRINTS
     std::print("  uploadVertices() - VAO: {}, VBO: {}\n", mVAO, mVBO);
+#endif
     
     glBindVertexArray(mVAO);
+#ifdef UI_DEBUG_PRINTS
     GLenum err = glGetError();
     if (err != GL_NO_ERROR)
         std::print("  ERROR after glBindVertexArray: 0x{:X}\n", err);
+#endif
     
     glBindBuffer(GL_ARRAY_BUFFER, mVBO);
+#ifdef UI_DEBUG_PRINTS
     err = glGetError();
     if (err != GL_NO_ERROR)
         std::print("  ERROR after glBindBuffer: 0x{:X}\n", err);
+#endif
     
     size_t byteSize = mTextVertices.size() * sizeof(float);
+#ifdef UI_DEBUG_PRINTS
     std::print("  Uploading {} bytes ({} floats, {} text vertices)\n", 
                byteSize, mTextVertices.size(), mTextVertices.size() / 8);
+#endif
     
     glBufferData(GL_ARRAY_BUFFER, byteSize, mTextVertices.data(), GL_STREAM_DRAW);
+#ifdef UI_DEBUG_PRINTS
     err = glGetError();
     if (err != GL_NO_ERROR)
         std::print("  ERROR after glBufferData: 0x{:X}\n", err);
+#endif
     
     int vertexCount = mTextVertices.size() / 8;
+#ifdef UI_DEBUG_PRINTS
     std::print("  Drawing {} text vertices ({} triangles)\n", vertexCount, vertexCount / 3);
+#endif
     
     glDrawArrays(GL_TRIANGLES, 0, vertexCount);
+#ifdef UI_DEBUG_PRINTS
     err = glGetError();
     if (err != GL_NO_ERROR)
         std::print("  ERROR after glDrawArrays: 0x{:X}\n", err);
     else
         std::print("  glDrawArrays completed successfully!\n");
+#endif
     
     glBindVertexArray(0);
 }

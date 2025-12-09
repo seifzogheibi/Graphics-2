@@ -30,6 +30,8 @@
 #include <vector>
 #include "ui.hpp"
 
+#include "measuring_performance.hpp"
+
 #define ASSETS "assets/cw2/"
 
 namespace
@@ -76,6 +78,9 @@ namespace
 
     // Task 1.10 Particle system
     ParticleSystem gParticleSystem;
+
+    // Task 1.12 Performance profiler
+    GPUProfiler gProfiler;
 
     // UI mouse states for buttons (task 1.11)
     double gMouseX= 0.0;
@@ -132,7 +137,8 @@ namespace
         ShaderProgram const& landingProgram,
         Vec3f const& landingPadPos1,
         Vec3f const& landingPadPos2,
-        ShaderProgram const& particleProgram
+        ShaderProgram const& particleProgram,
+        GPUProfiler& profiler
     )
     {
         Mat44f terrainMvp= viewProj * model;
@@ -186,23 +192,7 @@ namespace
         glDrawArrays(GL_TRIANGLES, 0, (GLsizei)terrainMeshData.positions.size());
         glBindVertexArray(0);
 
-        // Spaceship rendering
-        // reusing  terrain shader for spaceship rendering for consistency
-         GLuint ufoProgId = terrainProgram.programId();
-        glUniformMatrix3fv(1, 1, GL_TRUE, normalMatrix.v);
-        glUniformMatrix4fv(18, 1, GL_TRUE, ufoModel.v);
-        glBindVertexArray(ufoMesh.vao);
-        glUniform1i(17, 0); // uUseTexture = 0
-
-        Vec3f bodyColor{ 0.2f, 0.28f, 0.38f };
-        glUniform3fv(3, 1, &bodyColor[0]);
-        glUniformMatrix4fv(0, 1, GL_TRUE, ufoMvp.v);
-        glDrawArrays(GL_TRIANGLES, 0, ufoBaseVertexCount);
-
-        Vec3f topColor{ 0.25f, 0.45f, 0.95f };
-        glUniform3fv(3, 1, &topColor[0]);
-        glDrawArrays(GL_TRIANGLES, ufoBaseVertexCount, ufoTopVertexCount);
-        glBindVertexArray(0);
+        profilerMarkTerrainEnd(profiler);  // After terrain
 
         // Landing pads rendering
         GLuint landingProgId = landingProgram.programId();
@@ -233,6 +223,28 @@ namespace
 
         glBindVertexArray(0);
 
+        profilerMarkPadsEnd(profiler);  // After landing pads
+
+        // Spaceship rendering
+        // reusing terrain shader for spaceship rendering for consistency
+        glUseProgram(progId);
+        glUniformMatrix3fv(1, 1, GL_TRUE, normalMatrix.v);
+        glUniformMatrix4fv(18, 1, GL_TRUE, ufoModel.v);
+        glBindVertexArray(ufoMesh.vao);
+        glUniform1i(17, 0); // uUseTexture = 0
+
+        Vec3f bodyColor{ 0.2f, 0.28f, 0.38f };
+        glUniform3fv(3, 1, &bodyColor[0]);
+        glUniformMatrix4fv(0, 1, GL_TRUE, ufoMvp.v);
+        glDrawArrays(GL_TRIANGLES, 0, ufoBaseVertexCount);
+
+        Vec3f topColor{ 0.25f, 0.45f, 0.95f };
+        glUniform3fv(3, 1, &topColor[0]);
+        glDrawArrays(GL_TRIANGLES, ufoBaseVertexCount, ufoTopVertexCount);
+        glBindVertexArray(0);
+
+        profilerMarkUfoEnd(profiler);  // After spaceship
+
         // Particle rendering
         renderParticles(
             gParticleSystem,
@@ -240,6 +252,7 @@ namespace
             viewProj.v,
             camPosForLighting
         );
+        // Note: profilerEndFrame is called after renderScene returns
     }
 
 } // namespace
@@ -309,6 +322,9 @@ int main() try
 #   if !defined(NDEBUG)
     setup_gl_debug_output();
 #   endif
+
+    // Initialize performance profiler (Task 1.12)
+    initProfiler(gProfiler);
 
     OGL_CHECKPOINT_ALWAYS();
 
@@ -715,6 +731,10 @@ int main() try
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        // Start GPU and CPU timing
+        profilerBeginFrame(gProfiler);
+        profilerCpuSubmitStart(gProfiler);
+
         if (!gSplitScreenEnabled)
         {
             // Single fullscreen view
@@ -752,7 +772,8 @@ int main() try
                 landingProgram,
                 landingPadPos1,
                 landingPadPos2,
-                particleProgram
+                particleProgram,
+                gProfiler
             );
         }
         else
@@ -799,7 +820,8 @@ int main() try
                 landingProgram,
                 landingPadPos1,
                 landingPadPos2,
-                particleProgram
+                particleProgram,
+                gProfiler
             );
 
             // Right view (secondary camera mode)
@@ -838,14 +860,19 @@ int main() try
                 landingProgram,
                 landingPadPos1,
                 landingPadPos2,
-                particleProgram
+                particleProgram,
+                gProfiler
             );
 
             // Restore full viewport
             glViewport(0, 0, (int)fbwidth, (int)fbheight);
         }
 
-        // Draws UI overlay  (altitude and control buttons)
+        // End GPU and CPU timing
+        profilerEndFrame(gProfiler);
+        profilerCpuSubmitEnd(gProfiler);
+
+        // Draws UI overlay (altitude and control buttons)
         uiRenderer.setWindowSize((int)fbwidth, (int)fbheight);
         uiRenderer.beginFrame();
 
@@ -886,8 +913,14 @@ int main() try
 
         uiRenderer.endFrame(); // flush the UI
 
+        // Collect and print profiler results
+        profilerCollectResults(gProfiler);
+
         glfwSwapBuffers( window );
     }
+
+    // Cleanup
+    destroyProfiler(gProfiler);
 
     return 0;
 }
