@@ -34,7 +34,7 @@ CameraResult computeCameraView(
         Vec3f fHoriz{ f.x, 0.f, f.z };
         float len = length(fHoriz);
 
-        Vec3f defaultDir{ 0.f, 0.f, -1.f }; // default direction when rocket is vertical
+        Vec3f defaultDir{ 0.f, 0.f, 1.f }; // default direction when rocket is vertical
         float blendThreshold = 0.3f; // threshold for blending
         if (len < 1e-3f)
             fHoriz = defaultDir;
