@@ -66,7 +66,8 @@ void resetParticles(ParticleSystem& ps)
 void emitParticles(
     ParticleSystem& ps,
     float dt,
-    Vec3f const& enginePos,
+    Vec3f const& enginePosPrev,
+    Vec3f const& enginePosCurr,
     Vec3f const& forwardWS,
     Vec3f const& rightWS,
     Vec3f const& upWS
@@ -79,8 +80,8 @@ void emitParticles(
 
     Vec3f baseVel = -forwardWS * 9.0f;
 
-    const float spreadRadius = 0.2f;
-    const float verticalSpread = 0.4f;
+    const float spreadRadius   = 0.2f;
+    const float verticalSpread = 0.4f;   // if you want some vertical noise
 
     for (int n = 0; n < toSpawn; ++n)
     {
@@ -88,36 +89,43 @@ void emitParticles(
         if (idx < 0)
             break;
 
-        // Random offset in a disk
-        float u1 = std::rand() / float(RAND_MAX);
-        float u2r = std::rand() / float(RAND_MAX);
+        // 1) Pick a random point along the engine path this frame
+        float uPos = std::rand() / float(RAND_MAX);   // [0,1]
+        Vec3f enginePos =
+            enginePosPrev + (enginePosCurr - enginePosPrev) * uPos;
 
-        float r = spreadRadius * std::sqrt(u1);
+        // 2) Random offset in a disk around the nozzle
+        float u1   = std::rand() / float(RAND_MAX);
+        float u2r  = std::rand() / float(RAND_MAX);
+        float r    = spreadRadius * std::sqrt(u1);
         float theta = 2.0f * std::numbers::pi_v<float> * u2r;
 
         float dx = r * std::cos(theta);
         float dz = r * std::sin(theta);
+        float dy = (std::rand() / float(RAND_MAX) - 0.5f) * verticalSpread;
 
-        Vec3f offset = rightWS * dx + upWS * dz;
+        Vec3f offset = rightWS * dx + upWS * dz + Vec3f{0.f, dy, 0.f};
 
-        // Additional random velocity jitter
+        // 3) Velocity with jitter
         Vec3f jitter{
             (std::rand() / float(RAND_MAX) - 0.5f) * 6.0f,
             (std::rand() / float(RAND_MAX) - 0.5f) * 3.0f,
             (std::rand() / float(RAND_MAX) - 0.5f) * 6.0f
         };
-
         Vec3f vel = baseVel + jitter;
 
-        // Randomise spawn time within current frame for smoother emission
-        float tFrac = std::rand() / float(RAND_MAX);
-        Vec3f substepOffset = vel * (tFrac * dt);
+        // 4) Sub-frame "age" so particles of this batch are not all the same age
+        float tFrac = std::rand() / float(RAND_MAX);   // [0,1]
+        Vec3f substepOffset = -vel * (tFrac * dt);     // negative: as if they already moved a bit
 
-        ps.particles[idx].pos = enginePos + offset + substepOffset;
-        ps.particles[idx].vel = vel;
-        ps.particles[idx].life = 1.0f; // 1 second lifespan
+        ps.particles[idx].pos  = enginePos + offset + substepOffset;
+        ps.particles[idx].vel  = vel;
+
+        float lifeRand = std::rand() / float(RAND_MAX);
+        ps.particles[idx].life = 0.6f + 0.6f * lifeRand;   // [0.6, 1.2] s
     }
 }
+
 
 void updateParticles(ParticleSystem& ps, float dt)
 {
@@ -129,7 +137,7 @@ void updateParticles(ParticleSystem& ps, float dt)
             if (ps.particles[i].life > 0.0f)
             {
                 ps.particles[i].pos =
-                    ps.particles[i].pos + ps.particles[i].vel * dt;
+                   ps.particles[i].pos + ps.particles[i].vel * dt;
 
                 // Ground collision
                 if (ps.particles[i].pos.y < -0.98f)
@@ -144,9 +152,9 @@ void uploadParticleData(ParticleSystem& ps)
     int alive = 0;
     for (int i = 0; i < kMaxParticles; ++i)
     {
-        if (ps.particles[i].life > 0.0f)
+        if (ps.particles[i].life > 0.0f){
             sParticlePositions[alive++] = ps.particles[i].pos;
-    }
+    }}
     ps.aliveCount = alive;
 
     if (ps.aliveCount > 0)

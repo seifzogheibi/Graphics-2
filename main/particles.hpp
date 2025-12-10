@@ -38,7 +38,9 @@ void resetParticles(ParticleSystem& ps);
 void emitParticles(
     ParticleSystem& ps,
     float dt,
-    Vec3f const& enginePos,
+    // Vec3f const& enginePos,
+     Vec3f const& prevEnginePos,
+        Vec3f const& enginePosCurr,
     Vec3f const& forwardWS,
     Vec3f const& rightWS,
     Vec3f const& upWS

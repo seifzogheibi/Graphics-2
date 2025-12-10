@@ -52,13 +52,6 @@ namespace
         GLFWwindow* window;
     };
 
-    // Mesh handle
-    struct MeshGL
-    {
-        GLuint  vao = 0;
-        GLsizei vertexCount = 0;
-    };
-
     // Camera and view modes
     Camera gCamera; // Primary camera
     CameraMode gCameraMode = CameraMode::Free; // main view mode
@@ -108,7 +101,10 @@ namespace
         float t2  = t * t;
 
         return
-            (it2*it) * A +(3.f* it2*t)* B +(3.f*it* t2) *C +(t2*t)* D;
+            (it2*it) * A +
+            (3.f* it2*t)* B +
+            (3.f*it* t2) *C +
+            (t2*t)* D;
     }
 
     // Scene rendering (terrain, spaceship, pads, particles)
@@ -124,8 +120,6 @@ namespace
         Vec3f const& ambientColor,
         Vec3f const& baseColor,
         MeshGL const& ufoMesh,
-        int ufoBaseVertexCount,
-        int ufoTopVertexCount,
         Mat44f const& ufoModel,
         GLuint landingVao,
         SimpleMeshData const& landingMeshData,
@@ -199,11 +193,7 @@ namespace
         // One MVP for all UFO geometry
         glUniformMatrix4fv(0, 1, GL_TRUE, ufoMvp.v);
 
-        // Draw base (body + exhaust + bulbs)
-        glDrawArrays(GL_TRIANGLES, 0, ufoBaseVertexCount);
-
-        // Draw top (neck + cone + antenna + tip)
-        glDrawArrays(GL_TRIANGLES, ufoBaseVertexCount, ufoTopVertexCount);
+        glDrawArrays(GL_TRIANGLES, 0, ufoMesh.vertexCount);
 
         glBindVertexArray(0);
 
@@ -353,312 +343,18 @@ int main() try
 
     
     // =====================
-    // Build UFO using SimpleMeshData + pre-transform matrices
+    // Build UFO once (geometry + VAO) using helper
+    // =====================
+    UfoMesh ufo = create_ufo_mesh();
+
+    MeshGL ufoMesh          = ufo.mesh;
+
+    float bulbRingY         = ufo.bulbRingY;
+    float bulbRadius        = ufo.bulbRadius;
+    
     // =====================
 
-    // Common material values
-    Vec3f KaBody{0.1f, 0.1f, 0.1f};
-    Vec3f KdBody{0.9f, 0.9f, 0.9f};
-    Vec3f KeBody{0.0f, 0.0f, 0.0f};
-    Vec3f KsBody{0.8f, 0.8f, 0.8f};
-    Vec3f NsBody{64.0f, 0.f, 0.f};   // shininess in x
-
-    Vec3f KaPink{0.05f, 0.0f, 0.02f};
-    Vec3f KdPink{1.0f, 0.0f, 0.8f};
-    Vec3f KePink{0.0f, 0.0f, 0.0f};
-    Vec3f KsPink{0.9f, 0.6f, 0.9f};
-    Vec3f NsPink{96.f, 0.f, 0.f};
-
-    Vec3f KaEngine{0.05f, 0.05f, 0.06f};      // subtle cool metal tint
-    Vec3f KdEngine{0.77f, 0.77f, 0.77f};      // ALMOST no diffuse
-    Vec3f KeEngine{0.0f, 0.0f, 0.0f};
-    Vec3f KsEngine{1.0f, 1.0f, 1.0f};         // perfect mirror specular
-    Vec3f NsEngine{256.0f, 0.f, 0.f};            // very shiny
-
-    Vec3f white{1.f, 1.f, 1.f};
-
-    // ----- Dimensions in local UFO space -----
-    float bodyHeight   = 5.0f;
-    float bodyRadius   = 0.4f;
-    float engineHeight = 0.8f;
-    float engineRadius = bodyRadius * 1.5f;
-
-    float bodyBottomY = -bodyHeight * 0.5f; // -3
-    float bodyTopY    =  bodyHeight * 0.5f; // +3
-
-    // =====================
-    // BASE MESH (body + exhaust cone + bulbs)
-    // =====================
-
-    // Body: cylinder along local Y, scaled to height 6 and radius 0.4
-    Mat44f bodyPre =
-        make_scaling(bodyRadius * 2.f,  // x: desired radius from unit radius=0.5
-                     bodyHeight,        // y: height from unit [-0.5,0.5]
-                     bodyRadius * 2.f);
-
-    SimpleMeshData bodyMesh = make_cylinder(
-        true,          // capped
-        100,            // subdivisions
-        white,         // vertex color
-        bodyPre,
-        NsBody, KaBody, KdBody, KeBody, KsBody
-    );
-
-    // Exhaust: cone at bottom, flared out
-    float engineCenterY = bodyBottomY + engineHeight * 0.5f;
-    Mat44f enginePre =
-        make_translation(Vec3f{0.f, engineCenterY, 0.f}) *
-        make_scaling(engineRadius * 2.f,
-                     engineHeight,
-                     engineRadius * 2.f);
-
-    SimpleMeshData engineMesh = make_cone(
-        true,
-        48,
-        white,
-        enginePre,
-        NsEngine, KaEngine, KdEngine, KeEngine, KsEngine
-    );
-
-    // Bulbs: three tiny cylinders around a ring
-    // Common scale for the “bulb” cubes
-
-float bulbRingY   = 0.7f;                 // somewhere around mid-body
-float bulbRadius  = bodyRadius;    // just outside the hull
-
-Mat44f lightScale = make_scaling(0.1f, 0.1f, 0.1f);
-
-// Angles for 3 bulbs (0°, 120°, 240°)
-float angle0 = 0.0f;
-float angle4 = 4.0f * std::numbers::pi_v<float> / 3.0f;
-float angle12 = 2.0f * std::numbers::pi_v<float> / 3.0f;
-
-// Red light cube
-Mat44f redPre =
-    make_rotation_y(angle0) *
-    make_translation(Vec3f{ bulbRadius, bulbRingY, 0.0f }) *
-    lightScale;
-
-SimpleMeshData redLightCube = make_cube(
-    true,
-    1,
-    Vec3f{1.f, 0.f, 0.f},
-    redPre,
-    NsEngine,
-    KaEngine,
-    Vec3f {1.f, 0.f, 0.f},
-    KeEngine,
-    KsEngine
-);
-
-// Green light cube
-Mat44f greenPre =
- make_rotation_y(angle4) *
-    make_translation(Vec3f{ bulbRadius, bulbRingY, 0.0f }) *
-    lightScale;
-
-SimpleMeshData greenLightCube = make_cube(
-    true,
-    1,
-    Vec3f{0.f, 1.f, 0.f},
-    greenPre,
-    NsEngine,
-    KaEngine,
-    Vec3f {0.f, 1.f, 0.f},
-    KeEngine,
-    KsEngine
-);
-
-// Blue light cube
-Mat44f bluePre =
-    make_rotation_y(angle12) *
-    make_translation(Vec3f{ bulbRadius, bulbRingY, 0.0f }) *
-    lightScale;
-
-SimpleMeshData blueLightCube = make_cube(
-    true,
-    1,
-    Vec3f{0.f, 0.f, 1.f},
-    bluePre,
-    NsEngine,
-    KaEngine,
-    Vec3f {0.f, 0.65f, 1.f},
-    KeEngine,
-    KsEngine
-);
-
-
-        // =====================
-    // FINS (3 right triangles evenly spaced around body)
-    // =====================
-
-    float finHeight   = 1.2f;     // vertical size
-    float finLength   = 1.0f;     // how far it sticks out
-    // float finThickness = 1.f;
-    float finBaseY    = bodyBottomY + 0.4f; // vertical position of the base
-
-    float finRadius = 0.4f;            // distance from centre (you requested 0.4f)
-    float twoPi = 2.0f * std::numbers::pi_v<float>;
-
-    // Angle step for 3 fins
-    float angleStep = twoPi / 3.0f;
-
-    // Fin 0
-    Mat44f finPre0 =
-        make_rotation_y(0.0f) *
-        make_translation(Vec3f{finRadius, finBaseY, 0.0f}) *
-        make_scaling(finLength, finHeight, 1.0f);
-
-    SimpleMeshData finMesh0 = make_fin(
-        true,
-        16,
-        white,
-        finPre0,
-        NsPink, KaPink, KdPink, KePink, KsPink
-    );
-
-    // Fin 1 (rotated 120 degrees)
-    float angle1 = angleStep;
-    Mat44f finPre1 =
-        make_rotation_y(angle1) *
-        make_translation(Vec3f{finRadius, finBaseY, 0.0f}) *
-        make_scaling(finLength, finHeight, 1.0f);
-
-    SimpleMeshData finMesh1 = make_fin(
-        true,
-        16,
-        white,
-        finPre1,
-        NsPink, KaPink, KdPink, KePink, KsPink
-    );
-
-    // Fin 2 (rotated 240 degrees)
-    float angle2 = 2.0f * angleStep;
-    Mat44f finPre2 =
-        make_rotation_y(angle2) *
-        make_translation(Vec3f{finRadius, finBaseY, 0.0f}) *
-        make_scaling(finLength, finHeight, 1.0f);
-
-    SimpleMeshData finMesh2 = make_fin(
-        true,
-        16,
-        white,
-        finPre2,
-        NsPink, KaPink, KdPink, KePink, KsPink
-    );
-
-
-    // Concatenate all base parts
-    SimpleMeshData baseMesh = concatenate(bodyMesh, engineMesh);
-    baseMesh = concatenate( baseMesh, redLightCube);
-    baseMesh = concatenate(baseMesh, greenLightCube);
-    baseMesh = concatenate(baseMesh, blueLightCube);
-
-
-     // Add fins
-    baseMesh = concatenate(baseMesh, finMesh0);
-    baseMesh = concatenate(baseMesh, finMesh1);
-    baseMesh = concatenate(baseMesh, finMesh2);
-
-    // =====================
-    // TOP MESH (neck + big pink cone + antenna + tip)
-    // =====================
-
-    float neckHeight = 0.5f;
-    float neckRadius = bodyRadius;
-    float neckCenterY = bodyTopY + neckHeight * 0.5f;
-
-    Mat44f neckPre =
-        make_translation(Vec3f{0.f, neckCenterY, 0.f}) *
-        make_scaling(neckRadius * 2.f,
-                     neckHeight,
-                     neckRadius * 2.f);
-
-    SimpleMeshData neckMesh = make_cylinder(
-        true,
-        32,
-        Vec3f{1.f, 0.75f, 0.8f},  // hot pink
-        neckPre,
-        NsPink, KaPink, KdPink, KePink, KsPink
-    );
-
-    // Big pink cone under antenna
-    float coneHeight = 2.f;
-    float coneRadius = bodyRadius;
-    float coneCenterY = bodyTopY + neckHeight + coneHeight * 0.5f;
-
-    Mat44f conePre =
-        make_translation(Vec3f{0.f, coneCenterY, 0.f}) *
-        make_scaling(coneRadius * 2.f,
-                     coneHeight,
-                     coneRadius * 2.f);
-
-    SimpleMeshData coneMesh = make_cone(
-        true,
-        48,
-        Vec3f{1.0f,0.75f, 0.8f},  // pink colour
-        conePre,
-        NsPink, KaPink, KdPink, KePink, KsPink
-    );
-
-    // Thin antenna cylinder on top
-    float antennaHeight = 0.5f;
-    float antennaRadius = 0.05f;
-    float antennaCenterY =
-        bodyTopY + neckHeight + coneHeight - antennaHeight * 0.5f;
-
-    Mat44f antennaPre =
-        make_translation(Vec3f{0.f, antennaCenterY, 0.f}) *
-        make_scaling(antennaRadius * 2.f,
-                     antennaHeight,
-                     antennaRadius * 2.f);
-
-    SimpleMeshData antennaMesh = make_cylinder(
-        true,
-        16,
-        Vec3f{1.0f,0.75f, 0.8f},
-        antennaPre,
-        NsPink, KaPink, KdPink, KePink, KsPink
-    );
-
-    // Tiny tip cone at very top
-    float tipHeight = 0.3f;
-    float tipRadius = antennaRadius;
-    float tipCenterY = antennaCenterY + 0.5f * (antennaHeight + tipHeight);
-
-    Mat44f tipPre =
-        make_translation(Vec3f{0.f, tipCenterY, 0.f}) *
-        make_scaling(tipRadius * 2.f,
-                     tipHeight,
-                     tipRadius * 2.f);
-
-    SimpleMeshData tipMesh = make_cone(
-        true,
-        16,
-        Vec3f{1.f, 0.75f, 0.8f}, 
-        tipPre,
-        NsPink, KaPink, KdPink, KePink, KsPink
-    );
-
-    SimpleMeshData topMesh = concatenate(neckMesh, coneMesh);
-    topMesh = concatenate(topMesh, antennaMesh);
-    topMesh = concatenate(topMesh, tipMesh);
-
-    // =====================
-    // FINAL UFO MESH + COUNTS
-    // =====================
-
-    int ufoBaseVertexCount = (int)baseMesh.positions.size();
-    int ufoTopVertexCount  = (int)topMesh.positions.size();
-
-    SimpleMeshData ufoMeshData = concatenate(baseMesh, topMesh);
-
-    // Create VAO for the spaceship
-    MeshGL ufoMesh;
-    GLuint ufoVAO = create_vao(ufoMeshData);
-    ufoMesh.vao         = ufoVAO;
-    ufoMesh.vertexCount = (GLsizei)ufoMeshData.positions.size();
-    // =====================
+    // Load terrain texture
     GLuint terrainTexture =
         load_texture_2d( (ASSETS + terrainMeshData.texture_filepath).c_str() );
 
@@ -852,17 +548,58 @@ SimpleMeshData blueLightCube = make_cube(
             ufoRot *
             make_scaling(0.5f, 0.5f, 0.5f);
 
-        // Attach point lights to the spaceship's body
+            // Rotate the local light offsets by the UFO rotation (no translation)
+            Vec4f w0 = ufoRot * Vec4f{ lightOffset0.x, lightOffset0.y, lightOffset0.z, 0.f };
+            Vec4f w1 = ufoRot * Vec4f{ lightOffset1.x, lightOffset1.y, lightOffset1.z, 0.f };
+            Vec4f w2 = ufoRot * Vec4f{ lightOffset2.x, lightOffset2.y, lightOffset2.z, 0.f };
+
+            lightOffset0 = Vec3f{ w0.x, w0.y, w0.z };
+            lightOffset1 = Vec3f{ w1.x, w1.y, w1.z };
+            lightOffset2 = Vec3f{ w2.x, w2.y, w2.z };
+
+        // lightOffset0 = ufoModel * lightOffset0;
+        // lightOffset1 = ufoModel * lightOffset1;
+        // lightOffset2 = ufoModel * lightOffset2;
+
+        // // Attach point lights to the spaceship's body
         gPointLights[0].position = ufoPos + lightOffset0;
         gPointLights[1].position = ufoPos + lightOffset1;
         gPointLights[2].position = ufoPos + lightOffset2;
 
         // Particle emission and simulation
-        if (gUfoAnim.active && !gUfoAnim.paused)
-        {
-            Vec3f enginePos = ufoPos - forwardWS * 1.2f;
-            emitParticles(gParticleSystem, dt, enginePos, forwardWS, rightWS, upWS);
-        }
+// At top of main loop scope (inside while, but before any emission logic)
+static bool  firstEngineFrame = true;
+static Vec3f prevEnginePos{};
+
+// Particle emission and simulation
+if (gUfoAnim.active && !gUfoAnim.paused)
+{
+    Vec3f enginePosCurr = ufoPos - forwardWS * 1.2f;
+
+    if (firstEngineFrame)
+    {
+        // First frame after (re)starting animation: no history yet
+        prevEnginePos   = enginePosCurr;
+        firstEngineFrame = false;
+    }
+
+    emitParticles(
+        gParticleSystem,
+        dt,
+        prevEnginePos,
+        enginePosCurr,
+        forwardWS,
+        rightWS,
+        upWS
+    );
+
+    prevEnginePos = enginePosCurr;
+}
+else
+{
+    // When animation is paused / reset, reset the "first frame" flag
+    firstEngineFrame = true;
+}
 
         if (!gUfoAnim.paused)
         {
@@ -916,8 +653,6 @@ SimpleMeshData blueLightCube = make_cube(
                 ambientColor,
                 baseColor,
                 ufoMesh,
-                ufoBaseVertexCount,
-                ufoTopVertexCount,
                 ufoModel,
                 landingVao,
                 landingMeshData,
@@ -963,8 +698,6 @@ SimpleMeshData blueLightCube = make_cube(
                 ambientColor,
                 baseColor,
                 ufoMesh,
-                ufoBaseVertexCount,
-                ufoTopVertexCount,
                 ufoModel,
                 landingVao,
                 landingMeshData,
@@ -1002,8 +735,6 @@ SimpleMeshData blueLightCube = make_cube(
                 ambientColor,
                 baseColor,
                 ufoMesh,
-                ufoBaseVertexCount,
-                ufoTopVertexCount,
                 ufoModel,
                 landingVao,
                 landingMeshData,
