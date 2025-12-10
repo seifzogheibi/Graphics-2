@@ -32,9 +32,11 @@ void main()
     vec3 N = normalize(vNormal);
     vec3 V = normalize(uCameraPos - vPosition);
 
+
    // --- Material parameters ---
     vec3 Ka, Kd, Ks, Ke;
     float Ns;
+
     
     if (uUseTexture != 0) {
         // Terrain mode: use texture

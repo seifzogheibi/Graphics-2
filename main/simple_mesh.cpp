@@ -6,7 +6,12 @@ SimpleMeshData concatenate( SimpleMeshData aM, SimpleMeshData const& aN )
 	aM.colors.insert( aM.colors.end(), aN.colors.begin(), aN.colors.end() );
 	aM.normals.insert( aM.normals.end(), aN.normals.begin(), aN.normals.end() );
 	aM.texcoords.insert( aM.texcoords.end(), aN.texcoords.begin(), aN.texcoords.end() );
+
 	aM.Ns.insert( aM.Ns.end(), aN.Ns.begin(), aN.Ns.end() );
+	aM.Ka.insert( aM.Ka.end(), aN.Ka.begin(), aN.Ka.end() );
+	aM.Kd.insert( aM.Kd.end(), aN.Kd.begin(), aN.Kd.end() );
+	aM.Ke.insert( aM.Ke.end(), aN.Ke.begin(), aN.Ke.end() );
+	aM.Ks.insert( aM.Ks.end(), aN.Ks.begin(), aN.Ks.end() );
 	return aM;
 }
 

@@ -141,9 +141,9 @@ namespace
         GPUProfiler& profiler
     )
     {
-        Mat44f terrainMvp= viewProj * model;
-        Mat44f ufoMvp = viewProj * ufoModel;
-        Mat33f normalMatrix = mat44_to_mat33(transpose(invert(model))); // normal transform
+        Mat44f terrainMvp   = viewProj * model;
+        Mat44f ufoMvp       = viewProj * ufoModel;
+        Mat33f normalMatrix = mat44_to_mat33(transpose(invert(model)));
 
         // Prepare point light arrays 
         Vec3f pointLightPositions[3] = {
@@ -363,144 +363,314 @@ int main() try
     Vec3f baseColor = { 0.6f, 0.7f, 0.6f };
     Vec3f ambientColor = { 0.18f, 0.18f, 0.18f };
 
-    //Build Spaceship mesh
-    std::vector<Vec3f> ufoPositions;
-    std::vector<Vec3f> ufoNormals;
+    
+    // =====================
+    // Build UFO using SimpleMeshData + pre-transform matrices
+    // =====================
 
-    int ufoBaseVertexCount = 0;
-    int ufoTopVertexCount  = 0;
+    // Common material values
+    Vec3f KaBody{0.1f, 0.1f, 0.1f};
+    Vec3f KdBody{0.9f, 0.9f, 0.9f};
+    Vec3f KeBody{0.0f, 0.0f, 0.0f};
+    Vec3f KsBody{0.8f, 0.8f, 0.8f};
+    Vec3f NsBody{64.0f, 0.f, 0.f};   // shininess in x
 
-    int ufoBodyStart = 0, ufoBodyCount = 0;
-    int ufoEngineStart = 0, ufoEngineCount = 0;
-    int ufoFinsStart = 0, ufoFinsCount= 0;
-    int ufoBulbsStart = 0, ufoBulbsCount  = 0;
-    int ufoTopStart = 0, ufoTopCount = 0;
+    Vec3f KaPink{0.05f, 0.0f, 0.02f};
+    Vec3f KdPink{1.0f, 0.0f, 0.8f};
+    Vec3f KePink{0.0f, 0.0f, 0.0f};
+    Vec3f KsPink{0.9f, 0.6f, 0.9f};
+    Vec3f NsPink{96.f, 0.f, 0.f};
 
-    // Build flat arrays for spaceship mesh
-    buildUfoFlatArrays(
-        ufoPositions,
-        ufoNormals,
-        ufoBaseVertexCount,
-        ufoTopVertexCount,
-        ufoBodyStart,
-        ufoBodyCount,
-        ufoEngineStart,
-        ufoEngineCount,
-        ufoFinsStart,
-        ufoFinsCount,
-        ufoBulbsStart,
-        ufoBulbsCount,
-        ufoTopStart,
-        ufoTopCount
+    Vec3f KaEngine{0.05f, 0.05f, 0.06f};      // subtle cool metal tint
+    Vec3f KdEngine{0.77f, 0.77f, 0.77f};      // ALMOST no diffuse
+    Vec3f KeEngine{0.0f, 0.0f, 0.0f};
+    Vec3f KsEngine{1.0f, 1.0f, 1.0f};         // perfect mirror specular
+    Vec3f NsEngine{256.0f, 0.f, 0.f};            // very shiny
+
+    Vec3f white{1.f, 1.f, 1.f};
+
+    // ----- Dimensions in local UFO space -----
+    float bodyHeight   = 5.0f;
+    float bodyRadius   = 0.4f;
+    float engineHeight = 0.8f;
+    float engineRadius = bodyRadius * 1.5f;
+
+    float bodyBottomY = -bodyHeight * 0.5f; // -3
+    float bodyTopY    =  bodyHeight * 0.5f; // +3
+
+    // =====================
+    // BASE MESH (body + exhaust cone + bulbs)
+    // =====================
+
+    // Body: cylinder along local Y, scaled to height 6 and radius 0.4
+    Mat44f bodyPre =
+        make_scaling(bodyRadius * 2.f,  // x: desired radius from unit radius=0.5
+                     bodyHeight,        // y: height from unit [-0.5,0.5]
+                     bodyRadius * 2.f);
+
+    SimpleMeshData bodyMesh = make_cylinder(
+        true,          // capped
+        100,            // subdivisions
+        white,         // vertex color
+        bodyPre,
+        NsBody, KaBody, KdBody, KeBody, KsBody
     );
 
-    // material and colour data for the spaceship
-    SimpleMeshData ufoMeshData;
-    ufoMeshData.positions = ufoPositions;
-    ufoMeshData.normals = ufoNormals;
+    // Exhaust: cone at bottom, flared out
+    float engineCenterY = bodyBottomY + engineHeight * 0.5f;
+    Mat44f enginePre =
+        make_translation(Vec3f{0.f, engineCenterY, 0.f}) *
+        make_scaling(engineRadius * 2.f,
+                     engineHeight,
+                     engineRadius * 2.f);
 
-    ufoMeshData.Ka.reserve(ufoPositions.size());
-    ufoMeshData.Kd.reserve(ufoPositions.size());
-    ufoMeshData.Ks.reserve(ufoPositions.size());
-    ufoMeshData.Ke.reserve(ufoPositions.size());
-    ufoMeshData.Ns.reserve(ufoPositions.size());
-    ufoMeshData.colors.reserve(ufoPositions.size());
+    SimpleMeshData engineMesh = make_cone(
+        true,
+        48,
+        white,
+        enginePre,
+        NsEngine, KaEngine, KdEngine, KeEngine, KsEngine
+    );
 
-    // Assigns material properties (bulbs, engine, fins, top, and body)
-    for (size_t i = 0; i < ufoPositions.size(); ++i)
-    {
-        if (i >= (size_t)ufoBulbsStart &&
-            i < (size_t)(ufoBulbsStart + ufoBulbsCount))
-        {
-            // RGB bulbs
-            size_t bulbIndex = i - (size_t)ufoBulbsStart;
-            size_t groupSize = (size_t)ufoBulbsCount / 3;
+    // Bulbs: three tiny cylinders around a ring
+    // Common scale for the “bulb” cubes
 
-            Vec3f Ka, Kd, Ks, Ke;
-            if (bulbIndex < groupSize)
-            {
-                // Green bulb
-                Ka = {0.0f, 0.2f, 0.0f};
-                Kd = {0.0f, 0.5f, 0.0f};
-                Ks = {0.0f, 0.3f, 0.0f};
-                Ke = {0.0f, 1.0f, 0.0f};
-            }
-            else if (bulbIndex < 2 * groupSize)
-            {
-                // Red bulb
-                Ka = {0.2f, 0.0f, 0.0f};
-                Kd = {0.5f, 0.0f, 0.0f};
-                Ks = {0.3f, 0.0f, 0.0f};
-                Ke = {1.0f, 0.0f, 0.0f};
-            }
-            else
-            {
-                // Blue bulb
-                Ka = {0.0f, 0.1f, 0.2f};
-                Kd = {0.0f, 0.35f, 0.5f};
-                Ks = {0.0f, 0.2f, 0.3f};
-                Ke = {0.0f, 0.7f, 1.0f};
-            }
+float bulbRingY   = 0.7f;                 // somewhere around mid-body
+float bulbRadius  = bodyRadius;    // just outside the hull
 
-            ufoMeshData.Ka.push_back(Ka);
-            ufoMeshData.Kd.push_back(Kd);
-            ufoMeshData.Ks.push_back(Ks);
-            ufoMeshData.Ke.push_back(Ke);
-            ufoMeshData.Ns.push_back(32.0f);
-            ufoMeshData.colors.push_back({1.0f, 1.0f, 1.0f});
-        }
-        else if (i >= (size_t)ufoEngineStart &&
-                 i <  (size_t)(ufoEngineStart + ufoEngineCount))
-        {
-            // Metallic engine
-            ufoMeshData.Ka.push_back({0.02f, 0.02f, 0.02f});
-            ufoMeshData.Kd.push_back({0.80f, 0.80f, 0.80f});
-            ufoMeshData.Ks.push_back({1.00f, 1.00f, 1.00f});
-            ufoMeshData.Ke.push_back({0.0f,  0.0f,  0.0f});
-            ufoMeshData.Ns.push_back(512.0f);
-            ufoMeshData.colors.push_back({1.0f, 1.0f, 1.0f});
-        }
-        else if (i >= (size_t)ufoFinsStart &&
-                 i <  (size_t)(ufoFinsStart + ufoFinsCount))
-        {
-            // Pink fins
-            ufoMeshData.Ka.push_back({0.05f, 0.0f, 0.02f});
-            ufoMeshData.Kd.push_back({1.00f, 0.00f, 0.80f});
-            ufoMeshData.Ks.push_back({0.9f, 0.6f, 0.9f});
-            ufoMeshData.Ke.push_back({0.0f,  0.0f,  0.0f});
-            ufoMeshData.Ns.push_back(96.0f);
-            ufoMeshData.colors.push_back({1.0f, 1.0f, 1.0f});
-        }
-        else if (i >= (size_t)ufoTopStart &&
-                 i <  (size_t)(ufoTopStart + ufoTopCount))
-        {
-            // Pink top cone and antenna
-            ufoMeshData.Ka.push_back({0.05f, 0.0f, 0.02f});
-            ufoMeshData.Kd.push_back({1.00f, 0.00f, 0.80f});
-            ufoMeshData.Ks.push_back({0.9f, 0.6f, 0.9f});
-            ufoMeshData.Ke.push_back({0.0f,  0.0f,  0.0f});
-            ufoMeshData.Ns.push_back(96.0f);
-            ufoMeshData.colors.push_back({1.0f, 1.0f, 1.0f});
-        }
-        else
-        {
-            // Main body: neutral white, materials handled in shaders
-            ufoMeshData.Ka.push_back({0.9f, 0.9f, 0.9f});
-            ufoMeshData.Kd.push_back({1.0f, 1.0f, 1.0f});
-            ufoMeshData.Ks.push_back({1.0f, 1.0f, 1.0f});
-            ufoMeshData.Ke.push_back({0.0f, 0.0f, 0.0f});
-            ufoMeshData.Ns.push_back(128.0f);
-            ufoMeshData.colors.push_back({1.0f, 1.0f, 1.0f});
-        }
-    }
+Mat44f lightScale = make_scaling(0.1f, 0.1f, 0.1f);
+
+// Angles for 3 bulbs (0°, 120°, 240°)
+float angle0 = 0.0f;
+float angle4 = 4.0f * std::numbers::pi_v<float> / 3.0f;
+float angle12 = 2.0f * std::numbers::pi_v<float> / 3.0f;
+
+// Red light cube
+Mat44f redPre =
+    make_rotation_y(angle0) *
+    make_translation(Vec3f{ bulbRadius, bulbRingY, 0.0f }) *
+    lightScale;
+
+SimpleMeshData redLightCube = make_cube(
+    true,
+    1,
+    Vec3f{1.f, 0.f, 0.f},
+    redPre,
+    NsEngine,
+    KaEngine,
+    Vec3f {1.f, 0.f, 0.f},
+    KeEngine,
+    KsEngine
+);
+
+// Green light cube
+Mat44f greenPre =
+ make_rotation_y(angle4) *
+    make_translation(Vec3f{ bulbRadius, bulbRingY, 0.0f }) *
+    lightScale;
+
+SimpleMeshData greenLightCube = make_cube(
+    true,
+    1,
+    Vec3f{0.f, 1.f, 0.f},
+    greenPre,
+    NsEngine,
+    KaEngine,
+    Vec3f {0.f, 1.f, 0.f},
+    KeEngine,
+    KsEngine
+);
+
+// Blue light cube
+Mat44f bluePre =
+    make_rotation_y(angle12) *
+    make_translation(Vec3f{ bulbRadius, bulbRingY, 0.0f }) *
+    lightScale;
+
+SimpleMeshData blueLightCube = make_cube(
+    true,
+    1,
+    Vec3f{0.f, 0.f, 1.f},
+    bluePre,
+    NsEngine,
+    KaEngine,
+    Vec3f {0.f, 0.65f, 1.f},
+    KeEngine,
+    KsEngine
+);
+
+
+        // =====================
+    // FINS (3 right triangles evenly spaced around body)
+    // =====================
+
+    float finHeight   = 1.2f;     // vertical size
+    float finLength   = 1.0f;     // how far it sticks out
+    // float finThickness = 1.f;
+    float finBaseY    = bodyBottomY + 0.4f; // vertical position of the base
+
+    float finRadius = 0.4f;            // distance from centre (you requested 0.4f)
+    float twoPi = 2.0f * std::numbers::pi_v<float>;
+
+    // Angle step for 3 fins
+    float angleStep = twoPi / 3.0f;
+
+    // Fin 0
+    Mat44f finPre0 =
+        make_rotation_y(0.0f) *
+        make_translation(Vec3f{finRadius, finBaseY, 0.0f}) *
+        make_scaling(finLength, finHeight, 1.0f);
+
+    SimpleMeshData finMesh0 = make_fin(
+        true,
+        16,
+        white,
+        finPre0,
+        NsPink, KaPink, KdPink, KePink, KsPink
+    );
+
+    // Fin 1 (rotated 120 degrees)
+    float angle1 = angleStep;
+    Mat44f finPre1 =
+        make_rotation_y(angle1) *
+        make_translation(Vec3f{finRadius, finBaseY, 0.0f}) *
+        make_scaling(finLength, finHeight, 1.0f);
+
+    SimpleMeshData finMesh1 = make_fin(
+        true,
+        16,
+        white,
+        finPre1,
+        NsPink, KaPink, KdPink, KePink, KsPink
+    );
+
+    // Fin 2 (rotated 240 degrees)
+    float angle2 = 2.0f * angleStep;
+    Mat44f finPre2 =
+        make_rotation_y(angle2) *
+        make_translation(Vec3f{finRadius, finBaseY, 0.0f}) *
+        make_scaling(finLength, finHeight, 1.0f);
+
+    SimpleMeshData finMesh2 = make_fin(
+        true,
+        16,
+        white,
+        finPre2,
+        NsPink, KaPink, KdPink, KePink, KsPink
+    );
+
+
+    // Concatenate all base parts
+    SimpleMeshData baseMesh = concatenate(bodyMesh, engineMesh);
+    baseMesh = concatenate( baseMesh, redLightCube);
+    baseMesh = concatenate(baseMesh, greenLightCube);
+    baseMesh = concatenate(baseMesh, blueLightCube);
+
+
+     // Add fins
+    baseMesh = concatenate(baseMesh, finMesh0);
+    baseMesh = concatenate(baseMesh, finMesh1);
+    baseMesh = concatenate(baseMesh, finMesh2);
+
+    // =====================
+    // TOP MESH (neck + big pink cone + antenna + tip)
+    // =====================
+
+    float neckHeight = 0.5f;
+    float neckRadius = bodyRadius;
+    float neckCenterY = bodyTopY + neckHeight * 0.5f;
+
+    Mat44f neckPre =
+        make_translation(Vec3f{0.f, neckCenterY, 0.f}) *
+        make_scaling(neckRadius * 2.f,
+                     neckHeight,
+                     neckRadius * 2.f);
+
+    SimpleMeshData neckMesh = make_cylinder(
+        true,
+        32,
+        Vec3f{1.f, 0.75f, 0.8f},  // hot pink
+        neckPre,
+        NsPink, KaPink, KdPink, KePink, KsPink
+    );
+
+    // Big pink cone under antenna
+    float coneHeight = 2.f;
+    float coneRadius = bodyRadius;
+    float coneCenterY = bodyTopY + neckHeight + coneHeight * 0.5f;
+
+    Mat44f conePre =
+        make_translation(Vec3f{0.f, coneCenterY, 0.f}) *
+        make_scaling(coneRadius * 2.f,
+                     coneHeight,
+                     coneRadius * 2.f);
+
+    SimpleMeshData coneMesh = make_cone(
+        true,
+        48,
+        Vec3f{1.0f,0.75f, 0.8f},  // pink colour
+        conePre,
+        NsPink, KaPink, KdPink, KePink, KsPink
+    );
+
+    // Thin antenna cylinder on top
+    float antennaHeight = 0.5f;
+    float antennaRadius = 0.05f;
+    float antennaCenterY =
+        bodyTopY + neckHeight + coneHeight - antennaHeight * 0.5f;
+
+    Mat44f antennaPre =
+        make_translation(Vec3f{0.f, antennaCenterY, 0.f}) *
+        make_scaling(antennaRadius * 2.f,
+                     antennaHeight,
+                     antennaRadius * 2.f);
+
+    SimpleMeshData antennaMesh = make_cylinder(
+        true,
+        16,
+        Vec3f{1.0f,0.75f, 0.8f},
+        antennaPre,
+        NsPink, KaPink, KdPink, KePink, KsPink
+    );
+
+    // Tiny tip cone at very top
+    float tipHeight = 0.3f;
+    float tipRadius = antennaRadius;
+    float tipCenterY = antennaCenterY + 0.5f * (antennaHeight + tipHeight);
+
+    Mat44f tipPre =
+        make_translation(Vec3f{0.f, tipCenterY, 0.f}) *
+        make_scaling(tipRadius * 2.f,
+                     tipHeight,
+                     tipRadius * 2.f);
+
+    SimpleMeshData tipMesh = make_cone(
+        true,
+        16,
+        Vec3f{1.f, 0.75f, 0.8f}, 
+        tipPre,
+        NsPink, KaPink, KdPink, KePink, KsPink
+    );
+
+    SimpleMeshData topMesh = concatenate(neckMesh, coneMesh);
+    topMesh = concatenate(topMesh, antennaMesh);
+    topMesh = concatenate(topMesh, tipMesh);
+
+    // =====================
+    // FINAL UFO MESH + COUNTS
+    // =====================
+
+    int ufoBaseVertexCount = (int)baseMesh.positions.size();
+    int ufoTopVertexCount  = (int)topMesh.positions.size();
+
+    SimpleMeshData ufoMeshData = concatenate(baseMesh, topMesh);
 
     // Create VAO for the spaceship
     MeshGL ufoMesh;
     GLuint ufoVAO = create_vao(ufoMeshData);
     ufoMesh.vao         = ufoVAO;
-    ufoMesh.vertexCount = (GLsizei)ufoPositions.size();
-
-    // Terrain texture
+    ufoMesh.vertexCount = (GLsizei)ufoMeshData.positions.size();
+    // =====================
     GLuint terrainTexture =
         load_texture_2d( (ASSETS + terrainMeshData.texture_filepath).c_str() );
 
@@ -597,18 +767,16 @@ int main() try
         // spaceship above first landing pad
         Vec3f ufoStartPos{
             landingPadPos1.x,
-            landingPadPos1.y + 1.6f,
+            landingPadPos1.y + 1.3f,
             landingPadPos1.z
         };
 
-        // Space ship bulbs (RGB)
-        float lightRadius = 0.7f;
+        float lightRadius = bulbRadius;
 
-        // bulbs at an equal distance from each other
-        Vec3f lightOffset0{  lightRadius, 0.7f, 0.0f };
-        Vec3f lightOffset1{ -0.5f * lightRadius, 0.7f,
+        Vec3f lightOffset0{  lightRadius, bulbRingY - 0.35f, 0.0f };
+        Vec3f lightOffset1{ -0.5f * lightRadius, bulbRingY - 0.35f,
                              0.866025f * lightRadius };
-        Vec3f lightOffset2{ -0.5f * lightRadius, 0.7f,
+        Vec3f lightOffset2{ -0.5f * lightRadius, bulbRingY - 0.35f,
                             -0.866025f * lightRadius };
 
         // inital spaceship before launching (erect on landing pad)
@@ -704,7 +872,7 @@ int main() try
         // Particle emission and simulation
         if (gUfoAnim.active && !gUfoAnim.paused)
         {
-            Vec3f enginePos = ufoPos - forwardWS * 1.4f;
+            Vec3f enginePos = ufoPos - forwardWS * 1.2f;
             emitParticles(gParticleSystem, dt, enginePos, forwardWS, rightWS, upWS);
         }
 
