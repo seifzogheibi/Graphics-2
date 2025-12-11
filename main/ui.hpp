@@ -31,7 +31,7 @@ struct Button
     bool wasPressed = false; // pressed in previous frame
 };
 
-// UI Renderer class (text and buttons)
+// Render text and buttons
 class UIRenderer
 {
 public:
@@ -46,22 +46,21 @@ public:
 
 private:
     void setupGL();
-    void renderQuad(float x, float y, float w, float h, Vec4f color); // colored quad
-    void uploadVertices();
+    void PQuad(float x, float y, float w, float h, Vec4f color); // colored quad
+    void pushGlyphQuad(FONSquad const& quad, Vec4f color);
+    int screenWidth = 0;
+    int screenHeight = 0;
     
-    int mWindowWidth;
-    int mWindowHeight;
+    FONScontext* fontContext = nullptr; // Fontstash context
+    int font =-1; // Font handle
     
-    FONScontext* mFontContext; // Fontstash context
-    int mFont; // Font handle
+    ShaderProgram& uiShader;
+    GLuint vao=0;
+    GLuint vbo=0;
+    GLuint fontTexture=0;
     
-    ShaderProgram& mShader;
-    GLuint mVAO;
-    GLuint mVBO;
-    GLuint mFontTexture;
-    
-    std::vector<float> mQuadVertices;  // Solid quads (backgrounds, outlines)
-    std::vector<float> mTextVertices;  // Textured (font glyphs)
+    std::vector<float> quadVertices;  // Solid quads (backgrounds, outlines)
+    std::vector<float> textVertices;  // Text quads
 
 };
 
