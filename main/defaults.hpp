@@ -21,3 +21,4 @@ using Clock = std::chrono::steady_clock;
 using Secondsf = std::chrono::duration<float, std::ratio<1>>;
 
 #endif // DEFAULTS_HPP_4DCC4E4E_EE4D_4E4F_AA4C_24BD491651B6
+

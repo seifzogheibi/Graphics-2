@@ -30,6 +30,8 @@
 #include <vector>
 #include "ui.hpp"
 
+#include "measuring_performance.hpp"
+
 #define ASSETS "assets/cw2/"
 
 namespace
@@ -69,6 +71,9 @@ namespace
 
     // Task 1.10 Particle system
     ParticleSystem gParticleSystem;
+
+    // Task 1.12 Performance profiler
+    GPUProfiler gProfiler;
 
     // UI mouse states for buttons (task 1.11)
     double gMouseX= 0.0;
@@ -126,7 +131,8 @@ namespace
         ShaderProgram const& landingProgram,
         Vec3f const& landingPadPos1,
         Vec3f const& landingPadPos2,
-        ShaderProgram const& particleProgram
+        ShaderProgram const& particleProgram,
+        GPUProfiler& profiler
     )
     {
         Mat44f terrainMvp   = viewProj * model;
@@ -179,6 +185,7 @@ namespace
         glBindVertexArray(terrainVAO);
         glDrawArrays(GL_TRIANGLES, 0, (GLsizei)terrainMeshData.positions.size());
         glBindVertexArray(0);
+        profilerMarkTerrainEnd(profiler);  // After terrain
 
         // ----- UFO -----
         glUniformMatrix3fv(1, 1, GL_TRUE, normalMatrix.v);
@@ -197,7 +204,7 @@ namespace
 
         glBindVertexArray(0);
 
-
+        profilerMarkUfoEnd(profiler);  // After spaceship        
         // Landing pads rendering
         GLuint landingProgId = landingProgram.programId();
         glUseProgram(landingProgId);
@@ -227,6 +234,8 @@ namespace
 
         glBindVertexArray(0);
 
+        profilerMarkPadsEnd(profiler);  // After landing pads
+
         // Particle rendering
         renderParticles(
             gParticleSystem,
@@ -234,6 +243,7 @@ namespace
             viewProj.v,
             camPosForLighting
         );
+        // Note: profilerEndFrame is called after renderScene returns
     }
 
 } // namespace
@@ -303,6 +313,9 @@ int main() try
 #   if !defined(NDEBUG)
     setup_gl_debug_output();
 #   endif
+
+    // Initialize performance profiler (Task 1.12)
+    initProfiler(gProfiler);
 
     OGL_CHECKPOINT_ALWAYS();
 
@@ -624,6 +637,10 @@ else
 
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+        // Start GPU and CPU timing
+        profilerBeginFrame(gProfiler);
+        profilerCpuSubmitStart(gProfiler);
+
         if (!gSplitScreenEnabled)
         {
             // Single fullscreen view
@@ -659,7 +676,8 @@ else
                 landingProgram,
                 landingPadPos1,
                 landingPadPos2,
-                particleProgram
+                particleProgram,
+                gProfiler
             );
         }
         else
@@ -704,7 +722,8 @@ else
                 landingProgram,
                 landingPadPos1,
                 landingPadPos2,
-                particleProgram
+                particleProgram,
+                gProfiler
             );
 
             // Right view (secondary camera mode)
@@ -741,14 +760,19 @@ else
                 landingProgram,
                 landingPadPos1,
                 landingPadPos2,
-                particleProgram
+                particleProgram,
+                gProfiler
             );
 
             // Restore full viewport
             glViewport(0, 0, (int)fbwidth, (int)fbheight);
         }
 
-        // Draws UI overlay  (altitude and control buttons)
+        // End GPU and CPU timing
+        profilerEndFrame(gProfiler);
+        profilerCpuSubmitEnd(gProfiler);
+
+        // Draws UI overlay (altitude and control buttons)
         uiRenderer.setWindowSize((int)fbwidth, (int)fbheight);
         uiRenderer.beginFrame();
 
@@ -789,8 +813,14 @@ else
 
         uiRenderer.endFrame(); // flush the UI
 
+        // Collect and print profiler results
+        profilerCollectResults(gProfiler);
+
         glfwSwapBuffers( window );
     }
+
+    // Cleanup
+    destroyProfiler(gProfiler);
 
     return 0;
 }

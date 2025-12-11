@@ -2,6 +2,7 @@
 #include <cmath>
 #include <stdexcept>
 
+
 // Helper to create fontstash texture and update it
 namespace
 {
