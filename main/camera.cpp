@@ -114,9 +114,9 @@ void updateCameraMovement(Camera& camera, float dt)
 
     // Calculate forward and right vectors from LRangle/UDangle
     Vec3f camForward{
-        std::sin(camera.UDangle) ,
+        std::sin(camera.LRangle) ,
         0.0f,
-        -std::cos(camera.UDangle)
+        -std::cos(camera.LRangle)
     };
     camForward = normalize(camForward);
 
