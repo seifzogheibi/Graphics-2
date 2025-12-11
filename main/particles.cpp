@@ -78,7 +78,7 @@ void emitParticles(
     if (toSpawn > 0)
         ps.emissionAccumulator -= (float)toSpawn;
 
-    Vec3f baseVel = -forwardWS * 9.0f;
+    Vec3f baseVel = -forwardWS * 7.0f;
 
     const float spreadRadius   = 0.2f;
     const float verticalSpread = 0.4f;   // if you want some vertical noise
@@ -91,8 +91,10 @@ void emitParticles(
 
         // 1) Pick a random point along the engine path this frame
         float uPos = std::rand() / float(RAND_MAX);   // [0,1]
+        Vec3f nozzleBack = -forwardWS * 0.2f;
         Vec3f enginePos =
-            enginePosPrev + (enginePosCurr - enginePosPrev) * uPos;
+                            enginePosPrev + (enginePosCurr - enginePosPrev) * uPos
+                            + nozzleBack;
 
         // 2) Random offset in a disk around the nozzle
         float u1   = std::rand() / float(RAND_MAX);

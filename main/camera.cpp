@@ -115,9 +115,9 @@ void updateCameraMovement(Camera& camera, float dt)
 
     // Calculate forward and right vectors from yaw/pitch
     Vec3f camForward{
-        std::sin(camera.yaw) * std::cos(camera.pitch),
-        std::sin(camera.pitch),
-        -std::cos(camera.yaw) * std::cos(camera.pitch)
+        std::sin(camera.yaw) ,
+        0.0f,
+        -std::cos(camera.yaw)
     };
     camForward = normalize(camForward);
 

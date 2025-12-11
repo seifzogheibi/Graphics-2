@@ -22,19 +22,19 @@ UfoMesh create_ufo_mesh()
     Vec3f KdBody{0.9f, 0.9f, 0.9f};
     Vec3f KeBody{0.0f, 0.0f, 0.0f};
     Vec3f KsBody{0.8f, 0.8f, 0.8f};
-    Vec3f NsBody{64.0f, 0.f, 0.f};   // shininess in x
+    float NsBody = 64.0f;   // shininess in x
 
     Vec3f KaPink{0.05f, 0.0f, 0.02f};
     Vec3f KdPink{1.0f, 0.0f, 0.8f};
     Vec3f KePink{0.0f, 0.0f, 0.0f};
     Vec3f KsPink{0.9f, 0.6f, 0.9f};
-    Vec3f NsPink{96.f, 0.f, 0.f};
+    float NsPink = 32.f;
 
     Vec3f KaEngine{0.05f, 0.05f, 0.06f};      // subtle cool metal tint
     Vec3f KdEngine{0.77f, 0.77f, 0.77f};      // ALMOST no diffuse
     Vec3f KeEngine{0.0f, 0.0f, 0.0f};
     Vec3f KsEngine{1.0f, 1.0f, 1.0f};         // perfect mirror specular
-    Vec3f NsEngine{256.0f, 0.f, 0.f};            // very shiny
+    float NsEngine = 256.0f;            // very shiny
 
     Vec3f white{1.f, 1.f, 1.f};
 
@@ -52,14 +52,19 @@ UfoMesh create_ufo_mesh()
     // =====================
 
     // Body: cylinder along local Y, scaled to height 6 and radius 0.4
-    Mat44f bodyPre =
-        make_scaling(bodyRadius * 2.f,  // x: desired radius from unit radius=0.5
-                     bodyHeight,        // y: height from unit [-0.5,0.5]
-                     bodyRadius * 2.f);
+   float const halfBodyHeight = bodyHeight * 0.5f;
+
+Mat44f bodyPre =
+    // move from [0, bodyHeight] to [-bodyHeight/2, +bodyHeight/2]
+    make_translation(Vec3f{0.f, -halfBodyHeight, 0.f}) *
+    // rotate axis from X to Y (90 degrees about Z)
+    make_rotation_z(0.5f * std::numbers::pi_v<float>) *
+    // scale: length along X, radius in YZ
+    make_scaling(bodyHeight, bodyRadius, bodyRadius);
 
     SimpleMeshData bodyMesh = make_cylinder(
         true,          // capped
-        100,            // subdivisions
+        60,            // subdivisions
         white,         // vertex color
         bodyPre,
         NsBody, KaBody, KdBody, KeBody, KsBody
@@ -67,11 +72,12 @@ UfoMesh create_ufo_mesh()
 
     // Exhaust: cone at bottom, flared out
     float engineCenterY = bodyBottomY + engineHeight * 0.5f;
+    float const halfEngineHeight = engineHeight * 0.5f;
+
     Mat44f enginePre =
-        make_translation(Vec3f{0.f, engineCenterY, 0.f}) *
-        make_scaling(engineRadius * 2.f,
-                     engineHeight,
-                     engineRadius * 2.f);
+        make_translation(Vec3f{0.f, engineCenterY - halfEngineHeight, 0.f}) *
+        make_rotation_z(0.5f * std::numbers::pi_v<float>) *
+        make_scaling(engineHeight, engineRadius, engineRadius);
 
     SimpleMeshData engineMesh = make_cone(
         true,
@@ -149,7 +155,7 @@ SimpleMeshData blueLightCube = make_cube(
 );
 
 
-        // =====================
+    // =====================
     // FINS (3 right triangles evenly spaced around body)
     // =====================
 
@@ -229,15 +235,20 @@ SimpleMeshData blueLightCube = make_cube(
     float neckRadius = bodyRadius;
     float neckCenterY = bodyTopY + neckHeight * 0.5f;
 
-    Mat44f neckPre =
-        make_translation(Vec3f{0.f, neckCenterY, 0.f}) *
-        make_scaling(neckRadius * 2.f,
-                     neckHeight,
-                     neckRadius * 2.f);
+    float const halfNeckHeight = neckHeight * 0.5f;
+
+Mat44f neckPre =
+    // move bottom of neck to correct world Y
+    make_translation(Vec3f{0.f, neckCenterY - halfNeckHeight, 0.f}) *
+    // rotate axis from X to Y
+    make_rotation_z(0.5f * std::numbers::pi_v<float>) *
+    // scale: length along X, radius in YZ
+    make_scaling(neckHeight, neckRadius, neckRadius);
+
 
     SimpleMeshData neckMesh = make_cylinder(
         true,
-        32,
+        48,
         Vec3f{1.f, 0.75f, 0.8f},  // hot pink
         neckPre,
         NsPink, KaPink, KdPink, KePink, KsPink
@@ -247,12 +258,13 @@ SimpleMeshData blueLightCube = make_cube(
     float coneHeight = 2.f;
     float coneRadius = bodyRadius;
     float coneCenterY = bodyTopY + neckHeight + coneHeight * 0.5f;
+    float const halfConeHeight = coneHeight * 0.5f;
 
     Mat44f conePre =
-        make_translation(Vec3f{0.f, coneCenterY, 0.f}) *
-        make_scaling(coneRadius * 2.f,
-                     coneHeight,
-                     coneRadius * 2.f);
+        make_translation(Vec3f{0.f, coneCenterY - halfConeHeight, 0.f}) *
+        make_rotation_z(0.5f * std::numbers::pi_v<float>) *
+        make_scaling(coneHeight, coneRadius, coneRadius);
+
 
     SimpleMeshData coneMesh = make_cone(
         true,
@@ -268,11 +280,13 @@ SimpleMeshData blueLightCube = make_cube(
     float antennaCenterY =
         bodyTopY + neckHeight + coneHeight - antennaHeight * 0.5f;
 
+    float const halfAntennaHeight = antennaHeight * 0.5f;
+
     Mat44f antennaPre =
-        make_translation(Vec3f{0.f, antennaCenterY, 0.f}) *
-        make_scaling(antennaRadius * 2.f,
-                     antennaHeight,
-                     antennaRadius * 2.f);
+        make_translation(Vec3f{0.f, antennaCenterY - halfAntennaHeight, 0.f}) *
+        make_rotation_z(0.5f * std::numbers::pi_v<float>) *
+        make_scaling(antennaHeight, antennaRadius, antennaRadius);
+
 
     SimpleMeshData antennaMesh = make_cylinder(
         true,
@@ -286,12 +300,12 @@ SimpleMeshData blueLightCube = make_cube(
     float tipHeight = 0.3f;
     float tipRadius = antennaRadius;
     float tipCenterY = antennaCenterY + 0.5f * (antennaHeight + tipHeight);
+    float const halfTipHeight = tipHeight * 0.5f;
 
     Mat44f tipPre =
-        make_translation(Vec3f{0.f, tipCenterY, 0.f}) *
-        make_scaling(tipRadius * 2.f,
-                     tipHeight,
-                     tipRadius * 2.f);
+        make_translation(Vec3f{0.f, tipCenterY - halfTipHeight, 0.f}) *
+        make_rotation_z(0.5f * std::numbers::pi_v<float>) *
+        make_scaling(tipHeight, tipRadius, tipRadius);
 
     SimpleMeshData tipMesh = make_cone(
         true,

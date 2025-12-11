@@ -3,6 +3,7 @@
 in vec3 vNormal;
 in vec2 vTexCoord;
 in vec3 vPosition;
+
 // Material properties from vertex shader
 in vec3 vKa;
 in vec3 vKd;
@@ -22,8 +23,7 @@ layout (location = 7)  uniform vec3 uPointLightPos[3];      // 7, 8, 9
 layout (location = 10) uniform vec3 uPointLightColor[3];    // 10, 11, 12
 layout (location = 13) uniform int  uPointLightEnabled[3];  // 13, 14, 15
 layout (location = 16) uniform int  uDirectionalEnabled;    // 16
-layout (location = 17) uniform int uUseTexture;  // 0 = use materials, 1 = use texture
-
+layout (location = 17) uniform int  uUseTexture;            // 0 = use materials, 1 = use texture
 
 out vec4 oColor;
 
@@ -32,13 +32,12 @@ void main()
     vec3 N = normalize(vNormal);
     vec3 V = normalize(uCameraPos - vPosition);
 
-
-   // --- Material parameters ---
+    // --- Material parameters ---
     vec3 Ka, Kd, Ks, Ke;
     float Ns;
 
-    
-    if (uUseTexture != 0) {
+    if (uUseTexture != 0)
+    {
         // Terrain mode: use texture
         vec3 texColor = texture(uTexture, vTexCoord).rgb;
         Ka = uAmbientColor;
@@ -46,7 +45,9 @@ void main()
         Ks = vec3(0.05);
         Ke = vec3(0.0);
         Ns = 16.0;
-    } else {
+    }
+    else
+    {
         // UFO mode: use per-vertex material properties
         Ka = vKa;
         Kd = vKd;
@@ -61,8 +62,7 @@ void main()
     // ----- Directional light -----
     if (uDirectionalEnabled != 0)
     {
-        // uLightDir is the direction the light TRAVELS (from light to scene)
-        // For Lambert we want vector FROM point TO light => -uLightDir
+        // uLightDir is the direction the light travels (from light to scene)
         vec3 L = normalize(uLightDir);
         float NdotL = max(dot(N, L), 0.0);
 
@@ -87,8 +87,6 @@ void main()
 
         vec3 Lvec = uPointLightPos[i] - vPosition;
         float dist = length(Lvec);
-        // distc = 1.0;
-        // vec3 L = Lvec / max(dist, 0.0001);
         vec3 L = Lvec / dist;
 
         float attenuation = 1.0 / max(dist * dist, 1.0);
