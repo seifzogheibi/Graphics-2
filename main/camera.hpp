@@ -15,8 +15,8 @@ enum class CameraMode
 struct Camera
 {
     Vec3f position{ 0.f, 5.f, 0.f }; // strarting position (above ground)
-    float yaw   = 0.0f; // horizontal angle
-    float pitch = 0.0f; // vertical angle
+    float LRangle   = 0.0f; // horizontal angle
+    float UDangle = 0.0f; // vertical angle
 
     // Movement flags
     bool moveForward = false;
@@ -26,15 +26,15 @@ struct Camera
     bool moveUp = false;
     bool moveDown = false;
 
-    // Speed modifiers
-    bool fast = false; // shift
-    bool slow = false; // ctrl
-
     // mouse state
     bool mouseCaptured = false;
     bool firstMouse = true;
     double lastMouseX = 0.0;
     double lastMouseY = 0.0;
+    
+    // Speed modifiers
+    bool fast = false; // shift
+    bool slow = false; // ctrl
 };
 
 // final view and position result
@@ -44,7 +44,7 @@ struct CameraResult
     Vec3f position;
 };
 
-// Compute view matrix for a given camera mode
+// Build view matrix depending on the camera mode choice
 CameraResult computeCameraView(
     CameraMode mode,
     Camera const& camera,
