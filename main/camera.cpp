@@ -10,17 +10,17 @@ CameraResult computeCameraView(
     Vec3f const& landingPadPos1
 )
 {
-    CameraResult result;
+    CameraResult camfinalresult;
     
     switch (mode)
     {
     case CameraMode::Free:
     {
         // Free movement mode
-        result.position = camera.position;
-        result.view = 
-            make_rotation_x(-camera.pitch) * // look up and down
-            make_rotation_y(camera.yaw) * // look right and left
+        camfinalresult.position = camera.position;
+        camfinalresult.view = 
+            make_rotation_x(-camera.UDangle) * // look up and down
+            make_rotation_y(camera.LRangle) * // look right and left
             make_translation(-camera.position); // move world opposite to camera
         break;
     }
@@ -31,49 +31,48 @@ CameraResult computeCameraView(
         Vec3f f = forwardWS;
         
         // Project forward onto horizontal plane
-        Vec3f fHoriz{ f.x, 0.f, f.z };
-        float len = length(fHoriz);
+        Vec3f fH{ f.x, 0.f, f.z };
+        float len = length(fH);
 
-        Vec3f defaultDir{ 0.f, 0.f, 1.f }; // default direction when rocket is vertical
+        Vec3f defaultpos{ 0.f, 0.f, 1.f }; // default direction when rocket is vertical
         float blendThreshold = 0.3f; // threshold for blending
         if (len < 1e-3f)
-            fHoriz = defaultDir;
+            fH = defaultpos;
         else{
-            Vec3f calculatedDir = fHoriz / len; // normalize
-        
-        // Blend factor: 0 when len is small, 1 when len > blendThreshold
+            Vec3f calculatedirecton = fH / len; // normalize
+
         float blend = std::min(1.0f, len / blendThreshold);
         
-        // Smoothly interpolate between default and calculated direction
-        fHoriz = normalize(defaultDir * (1.0f - blend) + calculatedDir * blend);
+        // Mix between default and actual forward direction
+        fH = normalize(defaultpos * (1.0f - blend) + calculatedirecton * blend);
         }
 
-        float distBack   = 7.0f; // distance behind spaceship
-        float heightUp   = 1.0f; // height above spaceship
-        float sideOffset = -2.0f; // offset sideways
+        float followingdist = 7.0f; // distance behind spaceship
+        float followingH = 1.0f; // height above spaceship
+        float sideoffset = -2.0f; // offset sideways
 
-        Vec3f right = normalize(cross(worldUp, fHoriz));
+        Vec3f right = normalize(cross(worldUp, fH));
 
         // Camera position
         Vec3f camPos = 
             ufoPos
-            - fHoriz * distBack
-            + worldUp * heightUp
-            + right * sideOffset;
+            - fH * followingdist
+            + worldUp * followingH
+            + right * sideoffset;
 
         // Camera looks ahead of spaceship slightly
-        Vec3f camTarget = ufoPos + fHoriz * 2.0f;
+        Vec3f camTarget = ufoPos + fH * 2.0f;
         Vec3f dir = normalize(camTarget - camPos);
 
-        // convert direction to yaw/pitch
-        float camPitch = std::asin(dir.y);
-        float camYaw = std::atan2(dir.x, -dir.z);
+        // Turn  direction to LRangle/UDangle
+        float camUDangle = std::asin(dir.y);
+        float camLRangle = std::atan2(dir.x, -dir.z);
 
-        result.position = camPos;
+        camfinalresult.position = camPos;
         // build view matrix 
-        result.view = 
-            make_rotation_x(-camPitch) *
-            make_rotation_y(camYaw) *
+        camfinalresult.view = 
+            make_rotation_x(-camUDangle) *
+            make_rotation_y(camLRangle) *
             make_translation(-camPos);
         break;
     }
@@ -88,19 +87,19 @@ CameraResult computeCameraView(
 
         // direction from camera to spaceship
         Vec3f dir = normalize(ufoPos - camPos);
-        float camPitch = std::asin(dir.y);
-        float camYaw = std::atan2(dir.x, -dir.z);
+        float camUDangle = std::asin(dir.y);
+        float camLRangle = std::atan2(dir.x, -dir.z);
 
-        result.position = camPos;
-        result.view = 
-            make_rotation_x(-camPitch) *
-            make_rotation_y(camYaw) *
+        camfinalresult.position = camPos;
+        camfinalresult.view = 
+            make_rotation_x(-camUDangle) *
+            make_rotation_y(camLRangle) *
             make_translation(-camPos);
         break;
     }
     }
     
-    return result;
+    return camfinalresult;
 }
 
 // Update camera position based on input
@@ -113,36 +112,36 @@ void updateCameraMovement(Camera& camera, float dt)
 
     float moveStep = baseSpeed * dt; // movement distance
 
-    // Calculate forward and right vectors from yaw/pitch
+    // Calculate forward and right vectors from LRangle/UDangle
     Vec3f camForward{
-        std::sin(camera.yaw) * std::cos(camera.pitch),
-        std::sin(camera.pitch),
-        -std::cos(camera.yaw) * std::cos(camera.pitch)
+        std::sin(camera.LRangle) * std::cos(camera.UDangle),
+        std::sin(camera.UDangle),
+        -std::cos(camera.LRangle) * std::cos(camera.UDangle)
     };
     camForward = normalize(camForward);
 
-    Vec3f camRight{
-        std::cos(camera.yaw),
+    Vec3f rightCamera{
+        std::cos(camera.LRangle),
         0.0f,
-        std::sin(camera.yaw)
+        std::sin(camera.LRangle)
     };
-    camRight = normalize(camRight);
+    rightCamera = normalize(rightCamera);
 
-    Vec3f camUp{ 0.0f, 1.0f, 0.0f };
+    Vec3f cameraUp{ 0.0f, 1.0f, 0.0f };
 
-    // Move camera based on input flags
+    // Move camera in each direction based on flags
     if (camera.moveForward)
         camera.position = camera.position + camForward * moveStep;
     if (camera.moveBackward)
         camera.position = camera.position - camForward * moveStep;
     if (camera.moveRight)
-        camera.position = camera.position + camRight * moveStep;
+        camera.position = camera.position + rightCamera * moveStep;
     if (camera.moveLeft)
-        camera.position = camera.position - camRight * moveStep;
+        camera.position = camera.position - rightCamera * moveStep;
     if (camera.moveUp)
-        camera.position = camera.position + camUp * moveStep;
+        camera.position = camera.position + cameraUp * moveStep;
     if (camera.moveDown)
-        camera.position = camera.position - camUp * moveStep;
+        camera.position = camera.position - cameraUp * moveStep;
 }
 
 // Handle mouse movement for camera rotation
@@ -167,11 +166,11 @@ void handleCameraMouseMovement(Camera& camera, double xpos, double ypos)
     camera.lastMouseY = ypos;
 
     float sensitivity = 0.0025f;
-    camera.yaw   += static_cast<float>(xoffset) * sensitivity;
-    camera.pitch -= static_cast<float>(yoffset) * sensitivity;
+    camera.LRangle   += static_cast<float>(xoffset) * sensitivity;
+    camera.UDangle -= static_cast<float>(yoffset) * sensitivity;
 
-    // clamp pitch to avoid flipping
-    float maxPitch = 1.5f;
-    if (camera.pitch > maxPitch)  camera.pitch = maxPitch;
-    if (camera.pitch < -maxPitch) camera.pitch = -maxPitch;
+    // clamp UDangle to avoid flipping
+    float maxUDangle = 1.5f;
+    if (camera.UDangle > maxUDangle)  camera.UDangle = maxUDangle;
+    if (camera.UDangle < -maxUDangle) camera.UDangle = -maxUDangle;
 }

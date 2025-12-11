@@ -19,7 +19,7 @@
 #include "texture.hpp"
 
 #include "defaults.hpp"
-#include "ufo.hpp"
+#include "spaceship.hpp"
 #include "loadobj.hpp"
 #include "camera.hpp"
 #include "particles.hpp"

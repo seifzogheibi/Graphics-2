@@ -1,4 +1,4 @@
-// ufo.hpp
+// spaceship.hpp
 #pragma once
 #include <vector>
 #include "../vmlib/vec3.hpp"
