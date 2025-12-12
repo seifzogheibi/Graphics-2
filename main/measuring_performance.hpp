@@ -3,110 +3,72 @@
 
 #include <glad/glad.h>
 #include "defaults.hpp"
-#include <chrono>
 
-// Define ENABLE_GPU_PROFILING to enable performance measurements
-// Build with: -DENABLE_GPU_PROFILING
-// Or uncomment the line below:
-#define ENABLE_GPU_PROFILING
+// Recommended: enable via build flags -DENABLE_GPU_PROFILING
+// If you want it always-on, uncomment the next line.
+ #define ENABLE_GPU_PROFILING
+
+// Needs to exist even when profiling is disabled (stubs use it)
+enum class Stamp : int
+{
+    FrameStart  = 0,
+    TerrainEnd  = 1,
+    UfoEnd      = 2,
+    PadsEnd     = 3,
+    FrameEnd    = 4
+};
 
 #ifdef ENABLE_GPU_PROFILING
 
-// Number of timestamp points per frame:
-// 0: Frame start
-// 1: After terrain
-// 2: After landing pads
-// 3: After spaceship
-// 4: Frame end (after particles)
-constexpr int kNumTimestamps = 5;
-
-// Triple buffering to avoid GPU stalls when reading query results
-constexpr int kQueryBufferCount = 3;
-
-// How many frames to accumulate before printing results
-constexpr int kSampleFrames = 120;
+constexpr int kNumTimestamps     = 5;
+constexpr int kQueryBufferCount  = 3;
+constexpr int kSampleFrames      = 200;
 
 struct GPUProfiler
 {
-    // Query objects: [buffer index][timestamp index]
-    GLuint queries[kQueryBufferCount][kNumTimestamps];
-    
-    // Which buffer we're currently writing to
-    int writeIndex = 0;
-    
-    // Frame count for cycling through buffers
-    int frameCount = 0;
-    
-    // Accumulated GPU times (in milliseconds)
-    double terrainTimeAccum = 0.0;
-    double padsTimeAccum = 0.0;
-    double ufoTimeAccum = 0.0;
-    double particlesTimeAccum = 0.0;
-    double totalGpuTimeAccum = 0.0;
-    
-    // Accumulated CPU times (in milliseconds)
-    double cpuFrameTimeAccum = 0.0;
-    double cpuSubmitTimeAccum = 0.0;
-    
-    // Sample count for averaging
-    int validSamples = 0;
-    
-    // CPU timing points
-    Clock::time_point frameStartCpu;
-    Clock::time_point submitStartCpu;
-    Clock::time_point submitEndCpu;
-    Clock::time_point lastFrameTime;
-    
-    // Has the profiler been initialised?
+    GLuint q[kQueryBufferCount][kNumTimestamps]{};
+
+    int write   = 0;
+    int frame   = 0;
+    int samples = 0;
+
+    double accTerrain = 0.0;
+    double accUfo     = 0.0;
+    double accPads    = 0.0;
+    double accTotal   = 0.0;
+
+    double accCpuFrame  = 0.0;
+    double accCpuSubmit = 0.0;
+
+    Clock::time_point lastFrame{};
+    Clock::time_point submitStart{};
+
     bool initialised = false;
 };
 
-// Initialise the profiler (call once after OpenGL context is created)
-void initProfiler(GPUProfiler& profiler);
+void gpuInit(GPUProfiler& p);
+void gpuDestroy(GPUProfiler& p);
 
-// Call at the very start of rendering (after glClear)
-void profilerBeginFrame(GPUProfiler& profiler);
+void gpuBegin(GPUProfiler& p);
+void gpuStamp(GPUProfiler& p, Stamp s, bool doProfile = true);
 
-// Call after terrain rendering
-void profilerMarkTerrainEnd(GPUProfiler& profiler);
+void cpuSubmitBegin(GPUProfiler& p);
+void cpuSubmitEnd(GPUProfiler& p);
 
-// Call after landing pads rendering
-void profilerMarkPadsEnd(GPUProfiler& profiler);
+void gpuEndAndCollect(GPUProfiler& p);
 
-// Call after spaceship rendering
-void profilerMarkUfoEnd(GPUProfiler& profiler);
-
-// Call at the end of all rendering (after particles, before UI)
-void profilerEndFrame(GPUProfiler& profiler);
-
-// Mark CPU submit start (call before first draw call)
-void profilerCpuSubmitStart(GPUProfiler& profiler);
-
-// Mark CPU submit end (call after last draw call, before swap)
-void profilerCpuSubmitEnd(GPUProfiler& profiler);
-
-// Collect results from previous frames (non-blocking)
-// Prints results every kSampleFrames frames
-void profilerCollectResults(GPUProfiler& profiler);
-
-// Clean up query objects
-void destroyProfiler(GPUProfiler& profiler);
-
-#else // ENABLE_GPU_PROFILING not defined - empty stubs
+#else
 
 struct GPUProfiler {};
 
-inline void initProfiler(GPUProfiler&) {}
-inline void profilerBeginFrame(GPUProfiler&) {}
-inline void profilerMarkTerrainEnd(GPUProfiler&) {}
-inline void profilerMarkPadsEnd(GPUProfiler&) {}
-inline void profilerMarkUfoEnd(GPUProfiler&) {}
-inline void profilerEndFrame(GPUProfiler&) {}
-inline void profilerCpuSubmitStart(GPUProfiler&) {}
-inline void profilerCpuSubmitEnd(GPUProfiler&) {}
-inline void profilerCollectResults(GPUProfiler&) {}
-inline void destroyProfiler(GPUProfiler&) {}
+inline void gpuInit(GPUProfiler&) {}
+inline void gpuDestroy(GPUProfiler&) {}
+inline void gpuBegin(GPUProfiler&) {}
+inline void gpuStamp(GPUProfiler&, Stamp, bool = true) {}
+inline void cpuSubmitBegin(GPUProfiler&) {}
+inline void cpuSubmitEnd(GPUProfiler&) {}
+inline void gpuEndAndCollect(GPUProfiler&) {}
 
-#endif // ENABLE_GPU_PROFILING
+#endif
 
 #endif // MEASURING_PERFORMANCE_HPP

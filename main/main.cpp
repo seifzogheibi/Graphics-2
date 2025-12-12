@@ -132,7 +132,8 @@ namespace
         Vec3f const& landingPadPos1,
         Vec3f const& landingPadPos2,
         ShaderProgram const& particleProgram,
-        GPUProfiler& profiler
+        GPUProfiler& profiler,
+        bool doProfile = true
     )
     {
         Mat44f terrainMvp   = viewProj * model;
@@ -185,7 +186,7 @@ namespace
         glBindVertexArray(terrainVAO);
         glDrawArrays(GL_TRIANGLES, 0, (GLsizei)terrainMeshData.positions.size());
         glBindVertexArray(0);
-        profilerMarkTerrainEnd(profiler);  // After terrain
+        gpuStamp(profiler, Stamp::TerrainEnd, doProfile);
 
         // ----- UFO -----
         glUniformMatrix3fv(1, 1, GL_TRUE, normalMatrix.v);
@@ -204,7 +205,7 @@ namespace
 
         glBindVertexArray(0);
 
-        profilerMarkUfoEnd(profiler);  // After spaceship        
+        gpuStamp(profiler, Stamp::UfoEnd, doProfile); 
         // Landing pads rendering
         GLuint landingProgId = landingProgram.programId();
         glUseProgram(landingProgId);
@@ -234,7 +235,7 @@ namespace
 
         glBindVertexArray(0);
 
-        profilerMarkPadsEnd(profiler);  // After landing pads
+        gpuStamp(profiler, Stamp::PadsEnd, doProfile);
 
         // Particle rendering
         renderParticles(
@@ -315,7 +316,7 @@ int main() try
 #   endif
 
     // Initialize performance profiler (Task 1.12)
-    initProfiler(gProfiler);
+    gpuInit(gProfiler);
 
     OGL_CHECKPOINT_ALWAYS();
 
@@ -638,9 +639,8 @@ else
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         // Start GPU and CPU timing
-        profilerBeginFrame(gProfiler);
-        profilerCpuSubmitStart(gProfiler);
-
+       gpuBegin(gProfiler);
+       cpuSubmitBegin(gProfiler);
         if (!gSplitScreenEnabled)
         {
             // Single fullscreen view
@@ -723,7 +723,7 @@ else
                 landingPadPos1,
                 landingPadPos2,
                 particleProgram,
-                gProfiler
+                gProfiler, true
             );
 
             // Right view (secondary camera mode)
@@ -761,7 +761,7 @@ else
                 landingPadPos1,
                 landingPadPos2,
                 particleProgram,
-                gProfiler
+                gProfiler, false
             );
 
             // Restore full viewport
@@ -769,8 +769,10 @@ else
         }
 
         // End GPU and CPU timing
-        profilerEndFrame(gProfiler);
-        profilerCpuSubmitEnd(gProfiler);
+        cpuSubmitEnd(gProfiler);
+        gpuStamp(gProfiler, Stamp::FrameEnd);   // after ALL scene rendering (including particles)
+        gpuEndAndCollect(gProfiler);            // reads old frames + prints every N frames
+
 
         // Draws UI overlay (altitude and control buttons)
         uiRenderer.setWindowSize((int)fbwidth, (int)fbheight);
@@ -813,14 +815,12 @@ else
 
         uiRenderer.endFrame(); // flush the UI
 
-        // Collect and print profiler results
-        profilerCollectResults(gProfiler);
 
         glfwSwapBuffers( window );
     }
 
     // Cleanup
-    destroyProfiler(gProfiler);
+    gpuDestroy(gProfiler);
 
     return 0;
 }
