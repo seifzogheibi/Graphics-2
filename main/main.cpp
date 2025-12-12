@@ -771,7 +771,7 @@ else
         // End GPU and CPU timing
         cpuSubmitEnd(gProfiler);
         gpuStamp(gProfiler, Stamp::FrameEnd);   // after ALL scene rendering (including particles)
-        gpuEndAndCollect(gProfiler);            // reads old frames + prints every N frames
+        gpuCollectResults(gProfiler);            // reads old frames + prints every N frames
 
 
         // Draws UI overlay (altitude and control buttons)
