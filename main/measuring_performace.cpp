@@ -97,14 +97,14 @@ void gpuEndAndCollect(GPUProfiler& p)
 
             // section times (ms)
             double terrain = ns_to_ms(t[(int)Stamp::TerrainEnd] - t[(int)Stamp::FrameStart]);
-            double ufo     = ns_to_ms(t[(int)Stamp::UfoEnd]     - t[(int)Stamp::TerrainEnd]);
-            double pads    = ns_to_ms(t[(int)Stamp::PadsEnd]    - t[(int)Stamp::UfoEnd]);
-            double total   = ns_to_ms(t[(int)Stamp::FrameEnd]   - t[(int)Stamp::FrameStart]);
+            double ufo = ns_to_ms(t[(int)Stamp::UfoEnd]     - t[(int)Stamp::TerrainEnd]);
+            double pads = ns_to_ms(t[(int)Stamp::PadsEnd]    - t[(int)Stamp::UfoEnd]);
+            double total = ns_to_ms(t[(int)Stamp::FrameEnd]   - t[(int)Stamp::FrameStart]);
 
             p.accTerrain += terrain;
-            p.accUfo     += ufo;
-            p.accPads    += pads;
-            p.accTotal   += total;
+            p.accUfo += ufo;
+            p.accPads += pads;
+            p.accTotal += total;
 
             p.samples++;
         }
@@ -119,18 +119,18 @@ void gpuEndAndCollect(GPUProfiler& p)
         double inv = 1.0 / double(p.samples);
 
         double avgTerrain = p.accTerrain * inv;
-        double avgUfo     = p.accUfo * inv;
-        double avgPads    = p.accPads * inv;
-        double avgTotal   = p.accTotal * inv;
-        double avgCpuF    = p.accCpuFrame * inv;
-        double avgCpuSub  = p.accCpuSubmit * inv;
+        double avgUfo = p.accUfo * inv;
+        double avgPads = p.accPads * inv;
+        double avgTotal = p.accTotal * inv;
+        double avgCpuF = p.accCpuFrame * inv;
+        double avgCpuSub = p.accCpuSubmit * inv;
 
         std::print("\nPerformance Results ({} frames)\n", p.samples);
         std::print("GPU Timing (GL_TIMESTAMP queries):\n");
-        std::print("  Terrain:       {:7.3f} ms\n", avgTerrain);
-        std::print("  Spaceship:     {:7.3f} ms\n", avgUfo);
-        std::print("  Landing Pads:  {:7.3f} ms\n", avgPads);
-        std::print("  Total GPU:     {:7.3f} ms ({:.1f} FPS potential)\n", avgTotal, 1000.0 / avgTotal);
+        std::print("Terrain:     {:7.3f} ms\n", avgTerrain);
+        std::print("Spaceship:   {:7.3f} ms\n", avgUfo);
+        std::print("Landing Pads:{:7.3f} ms\n", avgPads);
+        std::print("Total GPU:   {:7.3f} ms ({:.1f} FPS potential)\n", avgTotal, 1000.0 / avgTotal);
 
         std::print("CPU Timing (std::chrono):\n");
         std::print("  Frame-to-Frame:{:7.3f} ms ({:.1f} FPS actual)\n", avgCpuF, 1000.0 / avgCpuF);

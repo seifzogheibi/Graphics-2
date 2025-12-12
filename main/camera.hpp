@@ -11,40 +11,32 @@ enum class CameraMode
     Ground = 2  // fixed point on ground and always looks at the rocket
 };
 
-// Camera state
+// Camera state for the free camera
 struct Camera
 {
-    Vec3f position{ 0.f, 5.f, 0.f }; // strarting position (above ground)
-    float LRangle   = 0.0f; // horizontal angle
-    float UDangle = 0.0f; // vertical angle
-
-    // Movement flags
+    Vec3f position{ 0.f, 5.f, 0.f };
+    float pitch = 0.0f;
+    float yaw = 0.0f;
     bool moveForward = false;
     bool moveBackward = false;
     bool moveLeft = false;
     bool moveRight = false;
     bool moveUp = false;
     bool moveDown = false;
-
-    // mouse state
-    bool mouseCaptured = false;
+    bool mouseLocked = false;
     bool firstMouse = true;
     double lastMouseX = 0.0;
     double lastMouseY = 0.0;
-    
-    // Speed modifiers
     bool fast = false; // shift
     bool slow = false; // ctrl
 };
 
 // final view and position result
 struct CameraResult
-{
-    Mat44f view;
-    Vec3f position;
+{ Mat44f view; Vec3f position;
 };
 
-// Build view matrix depending on the camera mode choice
+// Build view matrix depending on the current camera mode 
 CameraResult computeCameraView(
     CameraMode mode,
     Camera const& camera,
@@ -53,17 +45,14 @@ CameraResult computeCameraView(
     Vec3f const& landingPadPos1
 );
 
-// Update camera position based on input
-void updateCameraMovement(
+// Moves the camera position based on the input
+void updatedCam(
     Camera& camera,
     float dt
 );
-
-// Handle mouse movement for camera rotation
-void handleCameraMouseMovement(
+// Mouse movement for camera rotation
+void cameraMouseLook(
     Camera& camera,
-    double xpos,
-    double ypos
+    double xpos, double ypos
 );
-
-#endif // CAMERA_HPP_INCLUDED
+#endif

@@ -13,31 +13,31 @@ enum class Stamp : int
 {
     FrameStart  = 0,
     TerrainEnd  = 1,
-    UfoEnd      = 2,
-    PadsEnd     = 3,
-    FrameEnd    = 4
+    UfoEnd = 2,
+    PadsEnd = 3,
+    FrameEnd = 4
 };
 
 #ifdef ENABLE_GPU_PROFILING
 
-constexpr int kNumTimestamps     = 5;
-constexpr int kQueryBufferCount  = 3;
-constexpr int kSampleFrames      = 200;
+constexpr int kNumTimestamps = 5;
+constexpr int kQueryBufferCount = 3;
+constexpr int kSampleFrames = 10;
 
 struct GPUProfiler
 {
     GLuint q[kQueryBufferCount][kNumTimestamps]{};
 
-    int write   = 0;
-    int frame   = 0;
+    int write = 0;
+    int frame = 0;
     int samples = 0;
 
     double accTerrain = 0.0;
-    double accUfo     = 0.0;
-    double accPads    = 0.0;
-    double accTotal   = 0.0;
+    double accUfo = 0.0;
+    double accPads = 0.0;
+    double accTotal = 0.0;
 
-    double accCpuFrame  = 0.0;
+    double accCpuFrame = 0.0;
     double accCpuSubmit = 0.0;
 
     Clock::time_point lastFrame{};

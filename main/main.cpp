@@ -621,7 +621,7 @@ else
         }
 
         // Camera movement
-        updateCameraMovement(gCamera, dt);
+        updatedCam(gCamera, dt);
 
         // Update button positions
         float buttonY = fbheight - 60.0f;
@@ -949,9 +949,9 @@ namespace
         // Right mouse button toggles mouse capture for camera look
         if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS)
         {
-            gCamera.mouseCaptured = !gCamera.mouseCaptured;
+            gCamera.mouseLocked = !gCamera.mouseLocked;
 
-            if (gCamera.mouseCaptured)
+            if (gCamera.mouseLocked)
             {
                 glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
                 gCamera.firstMouse = true;
@@ -968,7 +968,7 @@ namespace
         gMouseX = xpos;
         gMouseY = ypos;
 
-        handleCameraMouseMovement(gCamera, xpos, ypos);
+        cameraMouseLook(gCamera, xpos, ypos);
     }
 
     GLFWCleanupHelper::~GLFWCleanupHelper()
