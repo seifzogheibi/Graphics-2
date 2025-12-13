@@ -5,9 +5,9 @@
 CameraResult computeCameraView(
     CameraMode mode,
     Camera const& camera,
-    Vec3f const& ufoPos,
+    Vec3f const& spaceship_current_pos,
     Vec3f const& forwardWS,
-    Vec3f const& landingPadPos1
+    Vec3f const& landing_position
 )
 {
     CameraResult finalLook;
@@ -31,50 +31,50 @@ CameraResult computeCameraView(
         // Forward onto horizontal plane
         Vec3f fH{ f.x, 0.f, f.z };
         float len = length(fH);
-        Vec3f defaultpos{ 0.f, 0.f, 1.f };
+        Vec3f default_position{ 0.f, 0.f, 1.f };
         float blendThreshold = 0.3f;
         if (len < 1e-3f)
-            fH = defaultpos;
+            fH = default_position;
         else{
             Vec3f fHNormal = fH / len;
         // Smoothes out the camera to stop the shaking
         float blend = std::min(1.0f, len / blendThreshold);
-        fH = normalize(defaultpos * (1.0f - blend) + fHNormal * blend);
+        fH = normalize(default_position * (1.0f - blend) + fHNormal * blend);
         }
         float followingdist = 7.0f;
         float followingH = 1.0f;
         float sideoffset = -2.0f;
 
         Vec3f right = normalize(cross(worldUp, fH));
-        Vec3f camPos = ufoPos-fH * followingdist + worldUp * followingH + right * sideoffset;
+        Vec3f camera_position = spaceship_current_pos-fH * followingdist + worldUp * followingH + right * sideoffset;
 
         // Camera looks ahead of spaceship slightly
-        Vec3f camTarget = ufoPos + fH * 2.0f;
-        Vec3f dir = normalize(camTarget - camPos);
+        Vec3f camTarget = spaceship_current_pos + fH * 2.0f;
+        Vec3f direction = normalize(camTarget - camera_position);
 
         // Turn  direction to pitch/yaw
-        float camyaw = std::asin(dir.y);
-        float campitch = std::atan2(dir.x, -dir.z);
+        float camyaw = std::asin(direction.y);
+        float campitch = std::atan2(direction.x, -direction.z);
 
-        finalLook.position = camPos;
-        finalLook.view = make_rotation_x(-camyaw) *make_rotation_y(campitch) * make_translation(-camPos);
+        finalLook.position = camera_position;
+        finalLook.view = make_rotation_x(-camyaw) *make_rotation_y(campitch) * make_translation(-camera_position);
         break;
     }
     case CameraMode::Ground:
     {
         // Fixed camera on ground locked at the spaceship
-        Vec3f camPos{
-            landingPadPos1.x + 10.f,
-            landingPadPos1.y + 1.f,
-            landingPadPos1.z + 12.f
+        Vec3f camera_position{
+            landing_position.x + 10.f,
+            landing_position.y + 1.f,
+            landing_position.z + 12.f
         };
-        // direction from camera to spaceship
-        Vec3f dir = normalize(ufoPos - camPos);
-        float camyaw = std::asin(dir.y);
-        float campitch = std::atan2(dir.x, -dir.z);
+        // directionection from camera to spaceship
+        Vec3f direction = normalize(spaceship_current_pos - camera_position);
+        float camyaw = std::asin(direction.y);
+        float campitch = std::atan2(direction.x, -direction.z);
 
-        finalLook.position = camPos;
-        finalLook.view = make_rotation_x(-camyaw) *make_rotation_y(campitch) * make_translation(-camPos);
+        finalLook.position = camera_position;
+        finalLook.view = make_rotation_x(-camyaw) *make_rotation_y(campitch) * make_translation(-camera_position);
         break;
     }
     }
