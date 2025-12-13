@@ -32,17 +32,25 @@
 
 #include "measuring_performance.hpp"
 
+// define path to assets folder using a preprocessor macro
 #define ASSETS "assets/cw2/"
 
+// namespace to define functions/structs that will be used in this file
 namespace
 {
     constexpr char const* kWindowTitle = "COMP3811 - CW2";
 
-    // GLFW callbacks
+    // callback error by GLFW that returms error code followed by a message
     void glfw_callback_error_( int, char const* );
+
+    // callback for key presses in the window
     void glfw_callback_key_( GLFWwindow*, int, int, int, int );
+
+    // callback for mouse button presses in the window
     void glfw_callback_mouse_button_( GLFWwindow* , int , int , int );
-    void glfw_callback_cursor_pos_( GLFWwindow* , double, double );
+
+    // callback for mouse movement in the window
+    void glfw_callback_cursor_position_( GLFWwindow* , double, double );
 
     struct GLFWCleanupHelper
     {
@@ -54,57 +62,79 @@ namespace
         GLFWwindow* window;
     };
 
-    // Camera and view modes
-    Camera gCamera; // Primary camera
-    CameraMode gCameraMode = CameraMode::Free; // main view mode
-    bool gSplitScreenEnabled = false;
-    CameraMode gCameraMode2 = CameraMode::Chase;  // second view mode
+    // struct setups before main loops
+
+    // world camera and view modes
+    Camera CameraView;
+
+    // standard first perspn free camera
+    CameraMode FirstPerson = CameraMode::Free;
+    // start with split screen disabled
+    bool SplitScreen = false;
+    // camera tracking ship when split screen is enabled
+    CameraMode Tracking = CameraMode::Chase;
 
     // Task 1.7 Spaceship animation
-    struct VehicleAnim
+    struct Animation
     {
-        bool active = false; // Animation has started at least once
-        bool paused = false; // Toggled by F / UI button
-        float time   = 0.f; // Seconds since start
+        // start with stationary ship
+        bool active = false;
+        // toggle between paused and unpaused animation
+        bool paused = false;
+        // time since animation started
+        float time   = 0.f;
     };
-    VehicleAnim gUfoAnim;
+    // store animation state in a global variable (seconds unit)
+    Animation SpaceshipAnimation;
 
     // Task 1.10 Particle system
-    ParticleSystem gParticleSystem;
+    ParticleSystem Particles;
 
     // Task 1.12 Performance profiler
     GPUProfiler gProfiler;
 
     // UI mouse states for buttons (task 1.11)
-    double gMouseX= 0.0;
-    double gMouseY = 0.0;
-    bool gMouseLeftDown = false;
+    // Mouse x ansd y coordinates
+    double mouse_x= 0.0;
+    double mouse_y = 0.0;
+    // start with nothing being clicked
+    bool MouseClick = false;
 
     // Task1.6 Lighting
-    struct PointLight
+    struct LocalLightSource
     {
         Vec3f position;
         Vec3f color;
-        bool  enabled = true;
+        bool enabled = true;
     };
 
     // Three colored point lights
-    PointLight gPointLights[3];
-    bool gDirectionalLightEnabled = true;
+    LocalLightSource LocalLight[3];
+    // directional LocalLight is on by default
+    bool Sunlight = true;        
 
-    // Task 1.7 cubic bezier curve
-    Vec3f bezier3(
+    // Task 1.7 cubic bezier curve REFERENCE
+    // bezier function to calculate position on curve at a time t
+    Vec3f bezier(
+        // start point
         Vec3f const& A,
+        // point before curve
         Vec3f const& B,
+        // point at end of the curve
         Vec3f const& C,
+        // end point
         Vec3f const& D,
+        // time parameter 0 to 1
         float t
     )
     {
+
+        // compute bezier formula coefficients
         float it  = 1.f - t;
         float it2 = it * it;
         float t2  = t * t;
 
+        // return bezier function
         return
             (it2*it) * A +
             (3.f* it2*t)* B +
@@ -112,126 +142,140 @@ namespace
             (t2*t)* D;
     }
 
-    // Scene rendering (terrain, spaceship, pads, particles)
-    void renderScene(
-        Mat44f const& viewProj,
-        Vec3f const& camPosForLighting,
-        GLuint terrainVAO,
-        SimpleMeshData const& terrainMeshData,
-        GLuint terrainTexture,
-        ShaderProgram const& terrainProgram,
+    // Draw everything in the program (terrain, spaceship, pads, particles)
+    void render_world(
+        Mat44f const& view_projection,
+        Vec3f const& Camera_Lighting,
+        GLuint terrain_vao,
+        SimpleMeshData const& TerrainMesh,
+        GLuint Texture,
+        ShaderProgram const& terrain_shader,
         Mat44f const& model,
-        Vec3f const& lightDir,
-        Vec3f const& ambientColor,
-        Vec3f const& baseColor,
-        MeshGL const& ufoMesh,
-        Mat44f const& ufoModel,
-        GLuint landingVao,
-        SimpleMeshData const& landingMeshData,
-        ShaderProgram const& landingProgram,
-        Vec3f const& landingPadPos1,
-        Vec3f const& landingPadPos2,
-        ShaderProgram const& particleProgram,
+        Vec3f const& light_direction,
+        Vec3f const& ambience,
+        Vec3f const& color,
+        MeshGL const& SpaceshipMesh,
+        Mat44f const& SpaceshipMatrix,
+        GLuint landing_vao,
+        SimpleMeshData const& LandingMesh,
+        ShaderProgram const& landing_shader,
+        Vec3f const& landing_position,
+        Vec3f const& landing2_position,
+        ShaderProgram const& particle_shader,
         GPUProfiler& profiler,
         bool doProfile = true
     )
     {
-        Mat44f terrainMvp   = viewProj * model;
-        Mat44f ufoMvp       = viewProj * ufoModel;
-        Mat33f normalMatrix = mat44_to_mat33(transpose(invert(model)));
+        // mvp matrices to transform vertices from model space into cliped space
+        Mat44f terrain_mvp   = view_projection * model;
+        Mat44f spaceship_mvp       = view_projection * SpaceshipMatrix;
 
-        // Prepare point light arrays 
-        Vec3f pointLightPositions[3] = {
-            gPointLights[0].position,
-            gPointLights[1].position,
-            gPointLights[2].position
+        // normal matrix is inverse,transpose of model matrix (4x4 to 3x3 because no translation needed for normals)
+        Mat33f transform_model = mat44_to_mat33(transpose(invert(model)));
+
+        // place 3 local light sources in world positions
+        Vec3f LocalLightPosition[3] = {
+            LocalLight[0].position,
+            LocalLight[1].position,
+            LocalLight[2].position
         };
-        Vec3f pointLightColorsArr[3] = {
-            gPointLights[0].color,
-            gPointLights[1].color,
-            gPointLights[2].color
+        // colors of the local light sources
+        Vec3f LocalLightColor[3] = {
+            LocalLight[0].color,
+            LocalLight[1].color,
+            LocalLight[2].color
         };
-        GLint pointLightEnabledArr[3] = {
-            gPointLights[0].enabled ? 1 : 0,
-            gPointLights[1].enabled ? 1 : 0,
-            gPointLights[2].enabled ? 1 : 0
+        // enabled states of the local light sources (boolean into int)
+        GLint LocalLightOn[3] = {
+            LocalLight[0].enabled ? 1 : 0,
+            LocalLight[1].enabled ? 1 : 0,
+            LocalLight[2].enabled ? 1 : 0
         };
 
-        // Terrain rendering
-        GLuint progId = terrainProgram.programId();
-        glUseProgram(progId);
+        // render terrain
+        GLuint shader_main = terrain_shader.programId();
+        glUseProgram(shader_main);
 
-        glUniform3fv(2, 1, &lightDir.x);
-        glUniform3fv(4, 1, &ambientColor.x);
-        glUniformMatrix3fv(1, 1, GL_TRUE, normalMatrix.v);
-        glUniform3fv(6, 1, &camPosForLighting.x);
-        glUniform1i(17, 1); // uUseTexture = 1
+        // set uniform locations for terrain shader
+        // first number is layout location in shader, second is how many values, last is a pointer to data, (for matrices uses GL_TRUE to transpose)
+        glUniform3fv(2, 1, &light_direction.x);
+        glUniform3fv(4, 1, &ambience.x);
+        glUniformMatrix3fv(1, 1, GL_TRUE, transform_model.v);
+        glUniform3fv(6, 1, &Camera_Lighting.x);
+        glUniform1i(17, 1);
 
-        // point lights (positions, colors, enabled)
-        glUniform3fv(7, 3, &pointLightPositions[0].x);
-        glUniform3fv(10, 3, &pointLightColorsArr[0].x);
-        glUniform1iv(13, 3, pointLightEnabledArr);
-        glUniform1i(16, gDirectionalLightEnabled ? 1 : 0); // toggles sunlight
+        // local lights positions, colors, enabled
+        glUniform3fv(7, 3, &LocalLightPosition[0].x);
+        glUniform3fv(10, 3, &LocalLightColor[0].x);
+        glUniform1iv(13, 3, LocalLightOn);
+        glUniform1i(16, Sunlight ? 1 : 0);
 
-        glUniformMatrix4fv(0, 1, GL_TRUE, terrainMvp.v); // uViewProj times model
+        // set terrain matrix and color
+        glUniformMatrix4fv(0, 1, GL_TRUE, terrain_mvp.v);
         glUniformMatrix4fv(18, 1, GL_TRUE, model.v);
-        glUniform3fv(3, 1, &baseColor.x);
+        glUniform3fv(3, 1, &color.x);
 
         // bind terrain texture
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, terrainTexture);
+        glBindTexture(GL_TEXTURE_2D, Texture);
         glUniform1i(5, 0);
 
-        // draw terrain
-        glBindVertexArray(terrainVAO);
-        glDrawArrays(GL_TRIANGLES, 0, (GLsizei)terrainMeshData.positions.size());
+        // terrain rendering
+        glBindVertexArray(terrain_vao);
+        glDrawArrays(GL_TRIANGLES, 0, (GLsizei)TerrainMesh.positions.size());
         glBindVertexArray(0);
+        // stamp end of terrain rendering
         gpuStamp(profiler, Stamp::TerrainEnd, doProfile);
 
-        // ----- UFO -----
-        glUniformMatrix3fv(1, 1, GL_TRUE, normalMatrix.v);
-        glUniformMatrix4fv(18, 1, GL_TRUE, ufoModel.v);
-        glBindVertexArray(ufoMesh.vao);
-        glUniform1i(17, 0); // uUseTexture = 0
 
-        // Make diffuse/tint colour neutral so vertex colours are used directly
-        Vec3f ufoTint{ 1.0f, 1.0f, 1.0f };
-        glUniform3fv(3, 1, &ufoTint.x);
+        // spaceship rendering, set uniforms
+        glUniformMatrix3fv(1, 1, GL_TRUE, transform_model.v);
+        glUniformMatrix4fv(18, 1, GL_TRUE, SpaceshipMatrix.v);
+        glBindVertexArray(SpaceshipMesh.vao);
+        glUniform1i(17, 0);
 
-        // One MVP for all UFO geometry
-        glUniformMatrix4fv(0, 1, GL_TRUE, ufoMvp.v);
+        // make diffuse/tint colour neutral so vertex colours are used directly
+        Vec3f spaceship_tint{ 1.0f, 1.0f, 1.0f };
+        glUniform3fv(3, 1, &spaceship_tint.x);
 
-        glDrawArrays(GL_TRIANGLES, 0, ufoMesh.vertexCount);
+        // set spaceship matrix
+        glUniformMatrix4fv(0, 1, GL_TRUE, spaceship_mvp.v);
 
+        // draw spaceship
+        glDrawArrays(GL_TRIANGLES, 0, SpaceshipMesh.vertexCount);
+
+        // unbind spaceship VAO
         glBindVertexArray(0);
 
-        gpuStamp(profiler, Stamp::UfoEnd, doProfile); 
-        // Landing pads rendering
-        GLuint landingProgId = landingProgram.programId();
-        glUseProgram(landingProgId);
+        // stamp end of spaceship rendering
+        gpuStamp(profiler, Stamp::SpaceshipEnd, doProfile); 
+        
+        // landing pad rendering
+        GLuint landing_id = landing_shader.programId();
+        glUseProgram(landing_id);
+        glUniformMatrix3fv(1, 1, GL_TRUE, transform_model.v);
+        glUniform3fv(2, 1, &light_direction.x);
+        glUniform3fv(4, 1, &ambience.x);
+        glUniform3fv(6, 1, &Camera_Lighting.x);
+        glUniform3fv(7, 3, &LocalLightPosition[0].x);
+        glUniform3fv(10, 3, &LocalLightColor[0].x);
+        glUniform1iv(13, 3, LocalLightOn);
+        glUniform1i(16, Sunlight ? 1 : 0);
 
-        glUniformMatrix3fv(1, 1, GL_TRUE, normalMatrix.v);
-        glUniform3fv(2, 1, &lightDir.x);
-        glUniform3fv(4, 1, &ambientColor.x);
-        glUniform3fv(6, 1, &camPosForLighting.x);
-        glUniform3fv(7, 3, &pointLightPositions[0].x);
-        glUniform3fv(10, 3, &pointLightColorsArr[0].x);
-        glUniform1iv(13, 3, pointLightEnabledArr);
-        glUniform1i(16, gDirectionalLightEnabled ? 1 : 0);
+        // bind landing pad VAO
+        glBindVertexArray(landing_vao);
 
-        glBindVertexArray(landingVao);
-
-        // first pad
-        Mat44f lpModel1 = make_translation(landingPadPos1);
-        glUniformMatrix4fv(0, 1, GL_TRUE, viewProj.v);
-        glUniformMatrix4fv(17, 1, GL_TRUE, lpModel1.v);
-        glDrawArrays(GL_TRIANGLES, 0, (GLsizei)landingMeshData.positions.size());
+        // first pad, create model matrix and set uniforms
+        Mat44f lpm = make_translation(landing_position);
+        glUniformMatrix4fv(0, 1, GL_TRUE, view_projection.v);
+        glUniformMatrix4fv(17, 1, GL_TRUE, lpm.v);
+        glDrawArrays(GL_TRIANGLES, 0, (GLsizei)LandingMesh.positions.size());
 
         // second pad
-        Mat44f lpModel2 = make_translation(landingPadPos2);
-        glUniformMatrix4fv(0, 1, GL_TRUE, viewProj.v);
-        glUniformMatrix4fv(17, 1, GL_TRUE, lpModel2.v);
-        glDrawArrays(GL_TRIANGLES, 0, (GLsizei)landingMeshData.positions.size());
+        Mat44f lpm2 = make_translation(landing2_position);
+        glUniformMatrix4fv(0, 1, GL_TRUE, view_projection.v);
+        glUniformMatrix4fv(17, 1, GL_TRUE, lpm2.v);
+        glDrawArrays(GL_TRIANGLES, 0, (GLsizei)LandingMesh.positions.size());
 
         glBindVertexArray(0);
 
@@ -239,15 +283,14 @@ namespace
 
         // Particle rendering
         renderParticles(
-            gParticleSystem,
-            particleProgram.programId(),
-            viewProj.v,
-            camPosForLighting
+            Particles,
+            particle_shader.programId(),
+            view_projection.v,
+            Camera_Lighting
         );
-        // Note: profilerEndFrame is called after renderScene returns
     }
 
-} // namespace
+}
 
 
 int main() try
@@ -295,7 +338,7 @@ int main() try
 
     // Input callbacks
     glfwSetMouseButtonCallback( window, &glfw_callback_mouse_button_ );
-    glfwSetCursorPosCallback( window, &glfw_callback_cursor_pos_ );
+    glfwSetCursorPosCallback( window, &glfw_callback_cursor_position_ );
     glfwSetKeyCallback( window, &glfw_callback_key_ );
 
     glfwMakeContextCurrent( window );
@@ -339,10 +382,10 @@ int main() try
     OGL_CHECKPOINT_ALWAYS();
 
     // terrain mesh loading and shader setup
-    SimpleMeshData terrainMeshData = load_wavefront_obj("assets/cw2/parlahti.obj");
-    GLuint terrainVAO = create_vao(terrainMeshData);
+    SimpleMeshData TerrainMesh = load_wavefront_obj("assets/cw2/parlahti.obj");
+    GLuint terrain_vao = create_vao(TerrainMesh);
 
-    ShaderProgram terrainProgram({
+    ShaderProgram terrain_shader({
         { GL_VERTEX_SHADER,   "assets/cw2/default.vert" },
         { GL_FRAGMENT_SHADER, "assets/cw2/default.frag" }
     });
@@ -351,40 +394,40 @@ int main() try
     Mat44f model = kIdentity44f;
 
     // Task1.6 Lighting colors
-    Vec3f lightDir = normalize(Vec3f{ 0.f, 1.f, -1.f }); // light direction
-    Vec3f baseColor = { 0.6f, 0.7f, 0.6f };
-    Vec3f ambientColor = { 0.18f, 0.18f, 0.18f };
+    Vec3f light_direction = normalize(Vec3f{ 0.f, 1.f, -1.f }); // light direction
+    Vec3f color = { 0.6f, 0.7f, 0.6f };
+    Vec3f ambience = { 0.18f, 0.18f, 0.18f };
 
     
     // =====================
-    // Build UFO once (geometry + VAO) using helper
+    // Build Spaceship once (geometry + VAO) using helper
     // =====================
-    UfoMesh ufo = create_ufo_mesh();
+    SpaceshipMesh Spaceship = create_spaceship_mesh();
 
-    MeshGL ufoMesh          = ufo.mesh;
+    MeshGL SpaceshipMesh          = Spaceship.mesh;
 
-    float bulbRingY         = ufo.bulbRingY;
-    float bulbRadius        = ufo.bulbRadius;
+    float bulbRingY         = Spaceship.bulbRingY;
+    float bulbRadius        = Spaceship.bulbRadius;
     
     // =====================
 
     // Load terrain texture
     GLuint terrainTexture =
-        load_texture_2d( (ASSETS + terrainMeshData.texture_filepath).c_str() );
+        load_texture_2d( (ASSETS + TerrainMesh.texture_filepath).c_str() );
 
     // Landing pad shaders
-    ShaderProgram landingProgram({
+    ShaderProgram landing_shader({
         { GL_VERTEX_SHADER,   "assets/cw2/landing.vert" },
         { GL_FRAGMENT_SHADER, "assets/cw2/landing.frag" }
     });
 
     // Landing pad positions
-    Vec3f landingPadPos1{ -11.50f, -0.96f, -54.f };
-    Vec3f landingPadPos2{   8.f,   -0.96f,  40.f };
+    Vec3f landing_position{ -11.50f, -0.96f, -54.f };
+    Vec3f landing2_position{   8.f,   -0.96f,  40.f };
 
-    SimpleMeshData landingMeshData =
+    SimpleMeshData LandingMesh =
     load_wavefront_obj("assets/cw2/landingpad.obj");
-    GLuint landingVao = create_vao(landingMeshData);
+    GLuint landing_vao = create_vao(LandingMesh);
 
     // UI setup (task 1.11)
     ShaderProgram uiShader({
@@ -400,22 +443,22 @@ int main() try
                        {0.5f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}};
 
     // Point lights attached to the spaceship
-    gPointLights[0].color = Vec3f{ 1.f, 0.f, 0.f }; //red
-    gPointLights[1].color = Vec3f{ 0.f, 1.f, 0.f }; // green
-    gPointLights[2].color = Vec3f{ 0.f, 0.f, 1.f }; // blue
+    LocalLight[0].color = Vec3f{ 1.f, 0.f, 0.f }; //red
+    LocalLight[1].color = Vec3f{ 0.f, 1.f, 0.f }; // green
+    LocalLight[2].color = Vec3f{ 0.f, 0.f, 1.f }; // blue
 
-    gPointLights[0].enabled = true;
-    gPointLights[1].enabled = true;
-    gPointLights[2].enabled = true;
-    gDirectionalLightEnabled = true;
+    LocalLight[0].enabled = true;
+    LocalLight[1].enabled = true;
+    LocalLight[2].enabled = true;
+    Sunlight = true;
 
     // Particle system shaders and initialization
-    ShaderProgram particleProgram({
+    ShaderProgram particle_shader({
         {GL_VERTEX_SHADER, "assets/cw2/particle.vert"},
         {GL_FRAGMENT_SHADER, "assets/cw2/particle.frag"}
     });
 
-    initParticleSystem(gParticleSystem, "assets/cw2/particle.png");
+    initParticleSystem(Particles, "assets/cw2/particle.png");
 
     OGL_CHECKPOINT_ALWAYS();
 
@@ -451,8 +494,8 @@ int main() try
         float dt = static_cast<float>(currentTime - lastTime);
         lastTime = currentTime;
 
-        if (gUfoAnim.active && !gUfoAnim.paused)
-            gUfoAnim.time += dt;
+        if (SpaceshipAnimation.active && !SpaceshipAnimation.paused)
+            SpaceshipAnimation.time += dt;
 
         // Task 1.7 Projection 
         float aspect = fbwidth / fbheight;
@@ -463,10 +506,10 @@ int main() try
         Mat44f proj = make_perspective_projection(fovRadians, aspect, zNear, zFar);
 
         // spaceship above first landing pad
-        Vec3f ufoStartPos{
-            landingPadPos1.x,
-            landingPadPos1.y + 1.3f,
-            landingPadPos1.z
+        Vec3f spaceship_start_position = {
+            landing_position.x,
+            landing_position.y + 1.3f,
+            landing_position.z
         };
 
         float lightRadius = bulbRadius;
@@ -478,17 +521,17 @@ int main() try
                             -0.866025f * lightRadius };
 
         // inital spaceship before launching (erect on landing pad)
-        Vec3f ufoPos    = ufoStartPos;
+        Vec3f spaceship_current_position = spaceship_start_position;
         Vec3f forwardWS{ 0.f, 1.f, 0.f };
         Vec3f rightWS  { 1.f, 0.f, 0.f };
         Vec3f upWS     { 0.f, 0.f, 1.f };
 
         float u = 0.0f;
 
-        if (gUfoAnim.active)
+        if (SpaceshipAnimation.active)
         {
             float totalTime = 12.0f; // duration of animation
-            float tAnim = gUfoAnim.time;
+            float tAnim = SpaceshipAnimation.time;
             if (tAnim < 0.f)       tAnim = 0.f;
             if (tAnim > totalTime) tAnim = totalTime;
 
@@ -498,17 +541,17 @@ int main() try
             float rangeZ    = 140.0f;
             float maxHeight = 80.0f;
 
-            float x0 = ufoStartPos.x;
-            float y0 = ufoStartPos.y;
-            float z0 = ufoStartPos.z;
+            float x0 = spaceship_start_position.x;
+            float y0 = spaceship_start_position.y;
+            float z0 = spaceship_start_position.z;
 
             // Bezier controls for curved take off path
-            Vec3f A = ufoStartPos;
+            Vec3f A = spaceship_start_position;
             Vec3f B{ x0, y0 + maxHeight * 0.7f,z0 };
             Vec3f C{ x0, y0 + maxHeight, z0 + rangeZ * 0.55f };
             Vec3f D{ x0, y0 + maxHeight * 0.2f, z0 + rangeZ };
 
-            ufoPos = bezier3(A, B, C, D, u); // position on curve
+            spaceship_current_position = bezier3(A, B, C, D, u);
 
             // approximates tangent by sampling slightly ahead on the curve
             float eps = 0.001f;
@@ -516,7 +559,7 @@ int main() try
             if (u2 > 1.0f) u2 = 1.0f;
 
             Vec3f posAhead = bezier3(A, B, C, D, u2);
-            Vec3f vel = posAhead - ufoPos;
+            Vec3f vel = posAhead - spaceship_current_position;
             float speed = length(vel);
 
             if (speed > 1e-4f)
@@ -528,57 +571,57 @@ int main() try
                     worldUp = Vec3f{ 1.f, 0.f, 0.f };
 
                 rightWS = normalize(cross(worldUp, forwardWS));
-                upWS    = cross(forwardWS, rightWS);
+                upWS = cross(forwardWS, rightWS);
             }
         }
         else
         {
             // space ship pointing upwards on landing pad before launch (idle)
-            ufoPos    = ufoStartPos;
+            spaceship_current_position = spaceship_start_position;
             forwardWS = Vec3f{ 0.f, 1.f, 0.f };
-            rightWS   = Vec3f{ 1.f, 0.f, 0.f };
-            upWS      = Vec3f{ 0.f, 0.f, 1.f };
+            rightWS = Vec3f{ 1.f, 0.f, 0.f };
+            upWS = Vec3f{ 0.f, 0.f, 1.f };
         }
 
         // Orient spaceship to follow path direction
         float fy = std::clamp(forwardWS.y, -1.0f, 1.0f);
-        float ufoYaw   = std::atan2(forwardWS.x, -forwardWS.z);
-        float ufoPitch = std::asin(fy);
-        float ufoRoll  = 0.0f;
+        float spaceship_yaw = std::atan2(forwardWS.x, -forwardWS.z);
+        float spaceship_pitch = std::asin(fy);
+        float spaceship_roll  = 0.0f;
 
-        Mat44f ufoOrient =
-            make_rotation_y(ufoYaw) *
-            make_rotation_x(ufoPitch) *
-            make_rotation_z(ufoRoll);
+        Mat44f spaceship_orientation =
+            make_rotation_y(spaceship_yaw) *
+            make_rotation_x(spaceship_pitch) *
+            make_rotation_z(spaceship_roll);
 
         // realigns the spaceships mesh axes to world axes
-        Mat44f ufoRot =
-            ufoOrient *
+        Mat44f spaceship_rotation =
+            spaceship_orientation *
             make_rotation_y(std::numbers::pi_v<float>) *
             make_rotation_x(0.5f * std::numbers::pi_v<float>);
 
-        Mat44f ufoModel =
-            make_translation(ufoPos) *
-            ufoRot *
+        Mat44f SpaceshipMatrix =
+            make_translation(spaceship_current_position) *
+            spaceship_rotation *
             make_scaling(0.5f, 0.5f, 0.5f);
 
-            // Rotate the local light offsets by the UFO rotation (no translation)
-            Vec4f w0 = ufoRot * Vec4f{ lightOffset0.x, lightOffset0.y, lightOffset0.z, 0.f };
-            Vec4f w1 = ufoRot * Vec4f{ lightOffset1.x, lightOffset1.y, lightOffset1.z, 0.f };
-            Vec4f w2 = ufoRot * Vec4f{ lightOffset2.x, lightOffset2.y, lightOffset2.z, 0.f };
+            // Rotate the local light offsets by the Spaceship rotation (no translation)
+            Vec4f w0 = spaceship_rotation * Vec4f{ lightOffset0.x, lightOffset0.y, lightOffset0.z, 0.f };
+            Vec4f w1 = spaceship_rotation * Vec4f{ lightOffset1.x, lightOffset1.y, lightOffset1.z, 0.f };
+            Vec4f w2 = spaceship_rotation * Vec4f{ lightOffset2.x, lightOffset2.y, lightOffset2.z, 0.f };
 
             lightOffset0 = Vec3f{ w0.x, w0.y, w0.z };
             lightOffset1 = Vec3f{ w1.x, w1.y, w1.z };
             lightOffset2 = Vec3f{ w2.x, w2.y, w2.z };
 
-        // lightOffset0 = ufoModel * lightOffset0;
-        // lightOffset1 = ufoModel * lightOffset1;
-        // lightOffset2 = ufoModel * lightOffset2;
+        // lightOffset0 = SpaceshipMatrix * lightOffset0;
+        // lightOffset1 = SpaceshipMatrix * lightOffset1;
+        // lightOffset2 = SpaceshipMatrix * lightOffset2;
 
         // // Attach point lights to the spaceship's body
-        gPointLights[0].position = ufoPos + lightOffset0;
-        gPointLights[1].position = ufoPos + lightOffset1;
-        gPointLights[2].position = ufoPos + lightOffset2;
+        LocalLight[0].position = spaceship_current_position + lightOffset0;
+        LocalLight[1].position = spaceship_current_position + lightOffset1;
+        LocalLight[2].position = spaceship_current_position + lightOffset2;
 
         // Particle emission and simulation
 // At top of main loop scope (inside while, but before any emission logic)
@@ -586,9 +629,9 @@ static bool  firstEngineFrame = true;
 static Vec3f prevEnginePos{};
 
 // Particle emission and simulation
-if (gUfoAnim.active && !gUfoAnim.paused)
+if (SpaceshipAnimation.active && !SpaceshipAnimation.paused)
 {
-    Vec3f enginePosCurr = ufoPos - forwardWS * 1.2f;
+    Vec3f enginePosCurr = spaceship_current_position - forwardWS * 1.2f;
 
     if (firstEngineFrame)
     {
@@ -598,7 +641,7 @@ if (gUfoAnim.active && !gUfoAnim.paused)
     }
 
     emitParticles(
-        gParticleSystem,
+        Particles,
         dt,
         prevEnginePos,
         enginePosCurr,
@@ -615,13 +658,13 @@ else
     firstEngineFrame = true;
 }
 
-        if (!gUfoAnim.paused)
+        if (!SpaceshipAnimation.paused)
         {
-            updateParticles(gParticleSystem, dt);
+            updateParticles(Particles, dt);
         }
 
         // Camera movement
-        updateCameraMovement(gCamera, dt);
+        updateCameraMovement(CameraView, dt);
 
         // Update button positions
         float buttonY = fbheight - 60.0f;
@@ -631,7 +674,7 @@ else
         resetButton.y  = buttonY;
 
         // Upload alive particles to VBO
-        uploadParticleData(gParticleSystem);
+        uploadParticleData(Particles);
 
         // Begin rendering (draw scene)
         OGL_CHECKPOINT_DEBUG();
@@ -641,7 +684,7 @@ else
         // Start GPU and CPU timing
        gpuBegin(gProfiler);
        cpuSubmitBegin(gProfiler);
-        if (!gSplitScreenEnabled)
+        if (!SplitScreen)
         {
             // Single fullscreen view
             glViewport(0, 0,
@@ -649,34 +692,34 @@ else
                        (int)fbheight);
 
             CameraResult camResult = computeCameraView(
-                gCameraMode,
-                gCamera,
-                ufoPos,
+                FirstPerson,
+                CameraView,
+                spaceship_current_position,
                 forwardWS,
-                landingPadPos1
+                landing_position
             );
 
-            Mat44f viewProj = proj * camResult.view;
+            Mat44f view_projection = proj * camResult.view;
 
             renderScene(
-                viewProj,
+                view_projection,
                 camResult.position,
-                terrainVAO,
-                terrainMeshData,
+                terrain_vao,
+                TerrainMesh,
                 terrainTexture,
-                terrainProgram,
+                terrain_shader,
                 model,
-                lightDir,
-                ambientColor,
-                baseColor,
-                ufoMesh,
-                ufoModel,
-                landingVao,
-                landingMeshData,
-                landingProgram,
-                landingPadPos1,
-                landingPadPos2,
-                particleProgram,
+                light_direction,
+                ambience,
+                color,
+                SpaceshipMesh,
+                SpaceshipMatrix,
+                landing_vao,
+                LandingMesh,
+                landing_shader,
+                landing_position,
+                landing2_position,
+                particle_shader,
                 gProfiler
             );
         }
@@ -695,11 +738,11 @@ else
                 make_perspective_projection(fovRadians, aspectLeft, zNear, zFar);
 
             CameraResult camResult1 = computeCameraView(
-                gCameraMode,
-                gCamera,
-                ufoPos,
+                FirstPerson,
+                CameraView,
+                spaceship_current_position,
                 forwardWS,
-                landingPadPos1
+                landing_position
             );
 
             Mat44f viewProj1 = projLeft * camResult1.view;
@@ -707,22 +750,22 @@ else
             renderScene(
                 viewProj1,
                 camResult1.position,
-                terrainVAO,
-                terrainMeshData,
+                terrain_vao,
+                TerrainMesh,
                 terrainTexture,
-                terrainProgram,
+                terrain_shader,
                 model,
-                lightDir,
-                ambientColor,
-                baseColor,
-                ufoMesh,
-                ufoModel,
-                landingVao,
-                landingMeshData,
-                landingProgram,
-                landingPadPos1,
-                landingPadPos2,
-                particleProgram,
+                light_direction,
+                ambience,
+                color,
+                SpaceshipMesh,
+                SpaceshipMatrix,
+                landing_vao,
+                LandingMesh,
+                landing_shader,
+                landing_position,
+                landing2_position,
+                particle_shader,
                 gProfiler, true
             );
 
@@ -733,11 +776,11 @@ else
                 make_perspective_projection(fovRadians, aspectRight, zNear, zFar);
 
             CameraResult camResult2 = computeCameraView(
-                gCameraMode2,
-                gCamera,
-                ufoPos,
+                Tracking,
+                CameraView,
+                spaceship_current_position,
                 forwardWS,
-                landingPadPos1
+                landing_position
             );
 
             Mat44f viewProj2 = projRight * camResult2.view;
@@ -745,22 +788,22 @@ else
             renderScene(
                 viewProj2,
                 camResult2.position,
-                terrainVAO,
-                terrainMeshData,
+                terrain_vao,
+                TerrainMesh,
                 terrainTexture,
-                terrainProgram,
+                terrain_shader,
                 model,
-                lightDir,
-                ambientColor,
-                baseColor,
-                ufoMesh,
-                ufoModel,
-                landingVao,
-                landingMeshData,
-                landingProgram,
-                landingPadPos1,
-                landingPadPos2,
-                particleProgram,
+                light_direction,
+                ambience,
+                color,
+                SpaceshipMesh,
+                SpaceshipMatrix,
+                landing_vao,
+                LandingMesh,
+                landing_shader,
+                landing_position,
+                landing2_position,
+                particle_shader,
                 gProfiler, false
             );
 
@@ -780,7 +823,7 @@ else
 
         // Altitude in top left
         char altitudeText[64];
-        std::snprintf(altitudeText, sizeof(altitudeText),"Altitude: %.1f m", ufoPos.y);
+        std::snprintf(altitudeText, sizeof(altitudeText),"Altitude: %.1f m", spaceship_current_position.y);
         uiRenderer.renderText(
             10.0f, 10.0f,
             altitudeText,
@@ -789,28 +832,28 @@ else
         );
 
         // Launch button (start/pause animation)
-        if (uiRenderer.renderButton(launchButton, gMouseX, gMouseY, gMouseLeftDown))
+        if (uiRenderer.renderButton(launchButton, mouse_x, mouse_y, MouseClick))
         {
-            if (!gUfoAnim.active)
+            if (!SpaceshipAnimation.active)
             {
-                gUfoAnim.active = true;
-                gUfoAnim.paused = false;
-                gUfoAnim.time = 0.f;
+                SpaceshipAnimation.active = true;
+                SpaceshipAnimation.paused = false;
+                SpaceshipAnimation.time = 0.f;
             }
             else
             {
-                gUfoAnim.paused = !gUfoAnim.paused;
+                SpaceshipAnimation.paused = !SpaceshipAnimation.paused;
             }
         }
 
         // Reset button (stops animation and clears particles)
-        if (uiRenderer.renderButton(resetButton, gMouseX, gMouseY, gMouseLeftDown))
+        if (uiRenderer.renderButton(resetButton, mouse_x, mouse_y, MouseClick))
         {
-            gUfoAnim.active = false;
-            gUfoAnim.paused = false;
-            gUfoAnim.time = 0.f;
+            SpaceshipAnimation.active = false;
+            SpaceshipAnimation.paused = false;
+            SpaceshipAnimation.time = 0.f;
 
-            resetParticles(gParticleSystem);
+            resetParticles(Particles);
         }
 
         uiRenderer.endFrame(); // flush the UI
@@ -853,63 +896,63 @@ namespace
 
         // Movement controls
         if (aKey == GLFW_KEY_W)
-            gCamera.moveForward = pressed || (aAction == GLFW_REPEAT);
+            CameraView.moveForward = pressed || (aAction == GLFW_REPEAT);
         else if (aKey == GLFW_KEY_S)
-            gCamera.moveBackward = pressed || (aAction == GLFW_REPEAT);
+            CameraView.moveBackward = pressed || (aAction == GLFW_REPEAT);
         else if (aKey == GLFW_KEY_A)
-            gCamera.moveLeft = pressed || (aAction == GLFW_REPEAT);
+            CameraView.moveLeft = pressed || (aAction == GLFW_REPEAT);
         else if (aKey == GLFW_KEY_D)
-            gCamera.moveRight = pressed || (aAction == GLFW_REPEAT);
+            CameraView.moveRight = pressed || (aAction == GLFW_REPEAT);
         else if (aKey == GLFW_KEY_E)
-            gCamera.moveUp = pressed || (aAction == GLFW_REPEAT);
+            CameraView.moveUp = pressed || (aAction == GLFW_REPEAT);
         else if (aKey == GLFW_KEY_Q)
-            gCamera.moveDown = pressed || (aAction == GLFW_REPEAT);
+            CameraView.moveDown = pressed || (aAction == GLFW_REPEAT);
 
         // Light toggles
         if (aAction == GLFW_PRESS)
         {
             if (aKey == GLFW_KEY_1)
-                gPointLights[0].enabled = !gPointLights[0].enabled;
+                LocalLight[0].enabled = !LocalLight[0].enabled;
             else if (aKey == GLFW_KEY_2)
-                gPointLights[1].enabled = !gPointLights[1].enabled;
+                LocalLight[1].enabled = !LocalLight[1].enabled;
             else if (aKey == GLFW_KEY_3)
-                gPointLights[2].enabled = !gPointLights[2].enabled;
+                LocalLight[2].enabled = !LocalLight[2].enabled;
             else if (aKey == GLFW_KEY_4)
-                gDirectionalLightEnabled = !gDirectionalLightEnabled;
+                Sunlight = !Sunlight;
         }
 
         // Speed modifiers
         if (aKey == GLFW_KEY_LEFT_SHIFT || aKey == GLFW_KEY_RIGHT_SHIFT)
-            gCamera.fast = pressed || (aAction == GLFW_REPEAT);
+            CameraView.fast = pressed || (aAction == GLFW_REPEAT);
         if (aKey == GLFW_KEY_LEFT_CONTROL || aKey == GLFW_KEY_RIGHT_CONTROL)
-            gCamera.slow = pressed || (aAction == GLFW_REPEAT);
+            CameraView.slow = pressed || (aAction == GLFW_REPEAT);
 
         // Spaceship animation controls (keyboard)
         if (aKey == GLFW_KEY_F && aAction == GLFW_PRESS)
         {
-            if (!gUfoAnim.active)
+            if (!SpaceshipAnimation.active)
             {
-                gUfoAnim.active = true;
-                gUfoAnim.paused = false;
-                gUfoAnim.time   = 0.f;
+                SpaceshipAnimation.active = true;
+                SpaceshipAnimation.paused = false;
+                SpaceshipAnimation.time   = 0.f;
             }
             else
             {
-                gUfoAnim.paused = !gUfoAnim.paused;
+                SpaceshipAnimation.paused = !SpaceshipAnimation.paused;
             }
         }
 
         if (aKey == GLFW_KEY_R && aAction == GLFW_PRESS)
         {
-            gUfoAnim.active = false;
-            gUfoAnim.paused = false;
-            gUfoAnim.time   = 0.f;
-            resetParticles(gParticleSystem);
+            SpaceshipAnimation.active = false;
+            SpaceshipAnimation.paused = false;
+            SpaceshipAnimation.time   = 0.f;
+            resetParticles(Particles);
         }
 
         // Toggles splitscreen with V
         if (aKey == GLFW_KEY_V && aAction == GLFW_PRESS)
-            gSplitScreenEnabled = !gSplitScreenEnabled;
+            SplitScreen = !SplitScreen;
 
         // Camera mode cycling (C for left, Shift+C for right)
         if (aKey == GLFW_KEY_C && aAction == GLFW_PRESS)
@@ -921,22 +964,22 @@ namespace
             if (shiftPressed)
             {
                 // Cycle secondary camera mode
-                if (gCameraMode2 == CameraMode::Free)
-                    gCameraMode2 = CameraMode::Chase;
-                else if (gCameraMode2 == CameraMode::Chase)
-                    gCameraMode2 = CameraMode::Ground;
+                if (Tracking == CameraMode::Free)
+                    Tracking = CameraMode::Chase;
+                else if (Tracking == CameraMode::Chase)
+                    Tracking = CameraMode::Ground;
                 else
-                    gCameraMode2 = CameraMode::Free;
+                    Tracking = CameraMode::Free;
             }
             else
             {
                 // Cycle main camera mode
-                if (gCameraMode == CameraMode::Free)
-                    gCameraMode  = CameraMode::Chase;
-                else if (gCameraMode == CameraMode::Chase)
-                    gCameraMode  = CameraMode::Ground;
+                if (FirstPerson == CameraMode::Free)
+                    FirstPerson  = CameraMode::Chase;
+                else if (FirstPerson == CameraMode::Chase)
+                    FirstPerson  = CameraMode::Ground;
                 else
-                    gCameraMode  = CameraMode::Free;
+                    FirstPerson  = CameraMode::Free;
             }
         }
     }
@@ -944,17 +987,17 @@ namespace
     void glfw_callback_mouse_button_( GLFWwindow* window, int button, int action, int )
     {
         if (button == GLFW_MOUSE_BUTTON_LEFT)
-            gMouseLeftDown = (action == GLFW_PRESS);
+            MouseClick = (action == GLFW_PRESS);
 
         // Right mouse button toggles mouse capture for camera look
         if (button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS)
         {
-            gCamera.mouseCaptured = !gCamera.mouseCaptured;
+            CameraView.mouseCaptured = !CameraView.mouseCaptured;
 
-            if (gCamera.mouseCaptured)
+            if (CameraView.mouseCaptured)
             {
                 glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-                gCamera.firstMouse = true;
+                CameraView.firstMouse = true;
             }
             else
             {
@@ -963,12 +1006,12 @@ namespace
         }
     }
 
-    void glfw_callback_cursor_pos_( GLFWwindow*, double xpos, double ypos )
+    void glfw_callback_cursor_position_( GLFWwindow*, double xpos, double ypos )
     {
-        gMouseX = xpos;
-        gMouseY = ypos;
+        mouse_x = xpos;
+        mouse_y = ypos;
 
-        handleCameraMouseMovement(gCamera, xpos, ypos);
+        handleCameraMouseMovement(CameraView, xpos, ypos);
     }
 
     GLFWCleanupHelper::~GLFWCleanupHelper()
