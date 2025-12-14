@@ -282,12 +282,7 @@ namespace
         gpuStamp(profiler, Stamp::PadsEnd, doProfile);
 
         // Particle rendering
-        renderParticles(
-            Particles,
-            particle_shader.programId(),
-            view_projection.v,
-            Camera_Lighting
-        );
+        renderParticles(Particles,particle_shader.programId(),view_projection.v,Camera_Lighting);
     }
 
 }
@@ -308,13 +303,13 @@ int main() try
     glfwSetErrorCallback( &glfw_callback_error_ ); // error callback
 
     // GLFW window hints
-    glfwWindowHint( GLFW_SRGB_CAPABLE, GLFW_TRUE );
-    glfwWindowHint( GLFW_DOUBLEBUFFER, GLFW_TRUE );
-    glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR, 4 );
-    glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR, 3 );
+    glfwWindowHint( GLFW_SRGB_CAPABLE, GLFW_TRUE);
+    glfwWindowHint( GLFW_DOUBLEBUFFER, GLFW_TRUE);
+    glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR,4);
+    glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR,3);
     glfwWindowHint( GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE );
     glfwWindowHint( GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE );
-    glfwWindowHint( GLFW_DEPTH_BITS, 24 );
+    glfwWindowHint( GLFW_DEPTH_BITS,24);
 
 #   if !defined(NDEBUG)
     glfwWindowHint( GLFW_OPENGL_DEBUG_CONTEXT, GLFW_TRUE ); // debug context
@@ -342,17 +337,16 @@ int main() try
     glfwSetKeyCallback( window, &glfw_callback_key_ );
 
     glfwMakeContextCurrent( window );
-    glfwSwapInterval( 1 ); // vsync on
+    glfwSwapInterval(1); // vsync on
 
     // GLAD (OpenGL loader)
     if( !gladLoadGLLoader( (GLADloadproc)&glfwGetProcAddress ) )
-        throw Error( "gladLoadGLLoader() failed - cannot load GL API!" );
+        throw Error( "gladLoadGLLoader() failed - cannot load GL API!");
 
     std::print( "RENDERER {}\n", (char const*)glGetString( GL_RENDERER ) );
-    std::print( "VENDOR {}\n",   (char const*)glGetString( GL_VENDOR ) );
-    std::print( "VERSION {}\n",  (char const*)glGetString( GL_VERSION ) );
-    std::print( "SHADING_LANGUAGE_VERSION {}\n",
-                (char const*)glGetString( GL_SHADING_LANGUAGE_VERSION ) );
+    std::print( "VENDOR {}\n", (char const*)glGetString( GL_VENDOR ) );
+    std::print( "VERSION {}\n",(char const*)glGetString( GL_VERSION ) );
+    std::print( "SHADING_LANGUAGE_VERSION {}\n", (char const*)glGetString( GL_SHADING_LANGUAGE_VERSION ) );
 
 #   if !defined(NDEBUG)
     setup_gl_debug_output();
@@ -386,7 +380,7 @@ int main() try
     GLuint terrain_vao = create_vao(TerrainMesh);
 
     ShaderProgram terrain_shader({
-        { GL_VERTEX_SHADER,   "assets/cw2/default.vert" },
+        { GL_VERTEX_SHADER, "assets/cw2/default.vert" },
         { GL_FRAGMENT_SHADER, "assets/cw2/default.frag" }
     });
 
@@ -398,68 +392,57 @@ int main() try
     Vec3f color = { 0.6f, 0.7f, 0.6f };
     Vec3f ambience = { 0.18f, 0.18f, 0.18f };
 
-    
-    // =====================
-    // Build Spaceship once (geometry + VAO) using helper
-    // =====================
+    // Building spaceship mesh once instead of every frame
     SpaceshipMesh Spaceship = create_spaceship_mesh();
+    MeshGL SpaceshipMesh = Spaceship.mesh;
+    float bulbRingY = Spaceship.bulbRingY;
+    float bulbRadius = Spaceship.bulbRadius;
 
-    MeshGL SpaceshipMesh          = Spaceship.mesh;
-
-    float bulbRingY         = Spaceship.bulbRingY;
-    float bulbRadius        = Spaceship.bulbRadius;
-    
-    // =====================
-
-    // Load terrain texture
     GLuint terrainTexture =
         load_texture_2d( (ASSETS + TerrainMesh.texture_filepath).c_str() );
 
-    // Landing pad shaders
+    // Landing pad shader and mesh
     ShaderProgram landing_shader({
-        { GL_VERTEX_SHADER,   "assets/cw2/landing.vert" },
+        { GL_VERTEX_SHADER, "assets/cw2/landing.vert" },
         { GL_FRAGMENT_SHADER, "assets/cw2/landing.frag" }
     });
 
-    // Landing pad positions
-    Vec3f landing_position{ -11.50f, -0.96f, -54.f };
-    Vec3f landing2_position{   8.f,   -0.96f,  40.f };
-
+    Vec3f landing_position{-11.50f, -0.96f, -54.f};
+    Vec3f landing2_position{ 8.f, -0.96f, 40.f };
+    
     SimpleMeshData LandingMesh =
     load_wavefront_obj("assets/cw2/landingpad.obj");
     GLuint landing_vao = create_vao(LandingMesh);
 
-    // UI setup (task 1.11)
+    // UI shader and renderer
     ShaderProgram uiShader({
         {GL_VERTEX_SHADER,"assets/cw2/ui.vert"},
         {GL_FRAGMENT_SHADER,"assets/cw2/ui.frag"}
     });
+    // Window size gets updated every frame in the main loop
+    UIRenderer uiRenderer(1280, 720, uiShader); 
 
-    UIRenderer uiRenderer(1280, 720, uiShader); // initial size
-
-    Button launchButton{"Launch", 0, 0, 120, 40,
-                        {0.0f, 0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}};
+    Button launchButton{"Launch", 0, 0, 120, 40, // this way the buttons stays centered
+        {0.0f, 0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}};
     Button resetButton{"Reset", 0, 0, 120, 40,
-                       {0.5f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}};
+        {0.5f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}};
 
     // Point lights attached to the spaceship
     LocalLight[0].color = Vec3f{ 1.f, 0.f, 0.f }; //red
     LocalLight[1].color = Vec3f{ 0.f, 1.f, 0.f }; // green
     LocalLight[2].color = Vec3f{ 0.f, 0.f, 1.f }; // blue
-
     LocalLight[0].enabled = true;
     LocalLight[1].enabled = true;
     LocalLight[2].enabled = true;
     Sunlight = true;
 
-    // Particle system shaders and initialization
+    // Particle shader
     ShaderProgram particle_shader({
         {GL_VERTEX_SHADER, "assets/cw2/particle.vert"},
         {GL_FRAGMENT_SHADER, "assets/cw2/particle.frag"}
     });
 
     initParticleSystem(Particles, "assets/cw2/particle.png");
-
     OGL_CHECKPOINT_ALWAYS();
 
     // Main loop
@@ -467,7 +450,7 @@ int main() try
     {
         glfwPollEvents();
 
-        // Framebuffer size and viewport
+        // Keep framebuffer size updated
         float fbwidth, fbheight;
         {
             int nwidth, nheight;
@@ -479,25 +462,23 @@ int main() try
             if( 0 == nwidth || 0 == nheight )
             {
                 do
-                {
-                    glfwWaitEvents();
+                { glfwWaitEvents();
                     glfwGetFramebufferSize( window, &nwidth, &nheight );
                 } while( 0 == nwidth || 0 == nheight );
             }
-
             glViewport( 0, 0, nwidth, nheight );
         }
 
-        // Time step (dt)
+        // Calculate delta time since last frame to make movement smooth
         static double lastTime = glfwGetTime();
         double currentTime = glfwGetTime();
         float dt = static_cast<float>(currentTime - lastTime);
         lastTime = currentTime;
-
+        // Update animation time if active and not paused
         if (SpaceshipAnimation.active && !SpaceshipAnimation.paused)
             SpaceshipAnimation.time += dt;
 
-        // Task 1.7 Projection 
+        // Task 1.7 camera projection 
         float aspect = fbwidth / fbheight;
         float fovRadians = 60.0f * std::numbers::pi_v<float> / 180.0f;
         float zNear = 0.1f;
@@ -511,21 +492,16 @@ int main() try
             landing_position.y + 1.3f,
             landing_position.z
         };
-
         float lightRadius = bulbRadius;
-
         Vec3f lightOffset0{  lightRadius, bulbRingY - 0.35f, 0.0f };
-        Vec3f lightOffset1{ -0.5f * lightRadius, bulbRingY - 0.35f,
-                             0.866025f * lightRadius };
-        Vec3f lightOffset2{ -0.5f * lightRadius, bulbRingY - 0.35f,
-                            -0.866025f * lightRadius };
+        Vec3f lightOffset1{ -0.5f * lightRadius, bulbRingY - 0.35f,0.866025f * lightRadius };
+        Vec3f lightOffset2{ -0.5f * lightRadius, bulbRingY - 0.35f,-0.866025f * lightRadius };
 
         // inital spaceship before launching (erect on landing pad)
         Vec3f spaceship_current_position = spaceship_start_position;
         Vec3f forwardWS{ 0.f, 1.f, 0.f };
-        Vec3f rightWS  { 1.f, 0.f, 0.f };
-        Vec3f upWS     { 0.f, 0.f, 1.f };
-
+        Vec3f rightWS{ 1.f, 0.f, 0.f };
+        Vec3f upWS { 0.f, 0.f, 1.f };
         float u = 0.0f;
 
         if (SpaceshipAnimation.active)
@@ -536,11 +512,9 @@ int main() try
             if (tAnim > totalTime) tAnim = totalTime;
 
             float s = tAnim / totalTime;
-            u = s * s;
-
+            u = s * s; // makes takeoff look smoother
             float rangeZ    = 140.0f;
             float maxHeight = 80.0f;
-
             float x0 = spaceship_start_position.x;
             float y0 = spaceship_start_position.y;
             float z0 = spaceship_start_position.z;
@@ -565,120 +539,92 @@ int main() try
             if (speed > 1e-4f)
             {
                 forwardWS = vel / speed;
-
                 Vec3f worldUp{ 0.f, 1.f, 0.f };
                 if (std::fabs(dot(forwardWS, worldUp)) > 0.99f)
-                    worldUp = Vec3f{ 1.f, 0.f, 0.f };
-
+                worldUp = Vec3f{ 1.f, 0.f, 0.f };
                 rightWS = normalize(cross(worldUp, forwardWS));
                 upWS = cross(forwardWS, rightWS);
             }
         }
         else
         {
-            // space ship pointing upwards on landing pad before launch (idle)
+            // Space ship pointing upwards on landing pad (idle)
             spaceship_current_position = spaceship_start_position;
             forwardWS = Vec3f{ 0.f, 1.f, 0.f };
             rightWS = Vec3f{ 1.f, 0.f, 0.f };
             upWS = Vec3f{ 0.f, 0.f, 1.f };
         }
 
-        // Orient spaceship to follow path direction
+        // Rotate spaceship to follow path direction
         float fy = std::clamp(forwardWS.y, -1.0f, 1.0f);
         float spaceship_yaw = std::atan2(forwardWS.x, -forwardWS.z);
         float spaceship_pitch = std::asin(fy);
         float spaceship_roll  = 0.0f;
 
         Mat44f spaceship_orientation =
-            make_rotation_y(spaceship_yaw) *
-            make_rotation_x(spaceship_pitch) *
-            make_rotation_z(spaceship_roll);
+            make_rotation_y(spaceship_yaw) * make_rotation_x(spaceship_pitch) * make_rotation_z(spaceship_roll);
 
-        // realigns the spaceships mesh axes to world axes
+        // Rotates the spaceships axes to the world axes
         Mat44f spaceship_rotation =
-            spaceship_orientation *
-            make_rotation_y(std::numbers::pi_v<float>) *
+            spaceship_orientation * make_rotation_y(std::numbers::pi_v<float>) * 
             make_rotation_x(0.5f * std::numbers::pi_v<float>);
 
         Mat44f SpaceshipMatrix =
-            make_translation(spaceship_current_position) *
-            spaceship_rotation *
-            make_scaling(0.5f, 0.5f, 0.5f);
+            make_translation(spaceship_current_position) * spaceship_rotation * make_scaling(0.5f, 0.5f, 0.5f);
 
-            // Rotate the local light offsets by the Spaceship rotation (no translation)
+            // Rotate the light offsets so bulbs stay on the spaceship when it turns
             Vec4f w0 = spaceship_rotation * Vec4f{ lightOffset0.x, lightOffset0.y, lightOffset0.z, 0.f };
             Vec4f w1 = spaceship_rotation * Vec4f{ lightOffset1.x, lightOffset1.y, lightOffset1.z, 0.f };
             Vec4f w2 = spaceship_rotation * Vec4f{ lightOffset2.x, lightOffset2.y, lightOffset2.z, 0.f };
-
             lightOffset0 = Vec3f{ w0.x, w0.y, w0.z };
             lightOffset1 = Vec3f{ w1.x, w1.y, w1.z };
             lightOffset2 = Vec3f{ w2.x, w2.y, w2.z };
 
-        // lightOffset0 = SpaceshipMatrix * lightOffset0;
-        // lightOffset1 = SpaceshipMatrix * lightOffset1;
-        // lightOffset2 = SpaceshipMatrix * lightOffset2;
+            // Attach point lights to the spaceship's body
+            LocalLight[0].position = spaceship_current_position + lightOffset0;
+            LocalLight[1].position = spaceship_current_position + lightOffset1;
+            LocalLight[2].position = spaceship_current_position + lightOffset2;
 
-        // // Attach point lights to the spaceship's body
-        LocalLight[0].position = spaceship_current_position + lightOffset0;
-        LocalLight[1].position = spaceship_current_position + lightOffset1;
-        LocalLight[2].position = spaceship_current_position + lightOffset2;
-
-        // Particle emission and simulation
-// At top of main loop scope (inside while, but before any emission logic)
-static bool  firstEngineFrame = true;
-static Vec3f prevEnginePos{};
-
-// Particle emission and simulation
-if (SpaceshipAnimation.active && !SpaceshipAnimation.paused)
-{
-    Vec3f enginePosCurr = spaceship_current_position - forwardWS * 1.2f;
-
-    if (firstEngineFrame)
-    {
-        // First frame after (re)starting animation: no history yet
-        prevEnginePos   = enginePosCurr;
-        firstEngineFrame = false;
-    }
-
-    emitParticles(
-        Particles,
-        dt,
-        prevEnginePos,
-        enginePosCurr,
-        forwardWS,
-        rightWS,
-        upWS
-    );
-
-    prevEnginePos = enginePosCurr;
-}
-else
-{
-    // When animation is paused / reset, reset the "first frame" flag
-    firstEngineFrame = true;
-}
-
-        if (!SpaceshipAnimation.paused)
+        // Task 1.10 Particles    
+        static bool  firstEngineFrame = true;
+        static Vec3f prevEnginePos{};
+        if (SpaceshipAnimation.active && !SpaceshipAnimation.paused)
         {
+            Vec3f enginePosCurr = spaceship_current_position - forwardWS * 1.2f;
+
+            if (firstEngineFrame)
+            {
+                // On the first frame the previous position is the current position
+                prevEnginePos = enginePosCurr;
+                firstEngineFrame = false;
+            }
+            emitParticles( Particles, dt, prevEnginePos,enginePosCurr,forwardWS,rightWS,upWS);
+            prevEnginePos = enginePosCurr;
+        }
+        else
+        {
+            // reset first frame flag if paused or reset
+            firstEngineFrame = true;
+        }
+        if (!SpaceshipAnimation.paused)
+        { 
             updateParticles(Particles, dt);
         }
 
         // Camera movement
         updatedCam(gCamera, dt);
 
-        // Update button positions
+        // Keep the buttons in the bottom center of the screen
         float buttonY = fbheight - 60.0f;
         launchButton.x = fbwidth / 2.0f - 70.0f;
         launchButton.y = buttonY;
         resetButton.x  = fbwidth / 2.0f + 70.0f;
         resetButton.y  = buttonY;
 
-        // Upload alive particles to VBO
         uploadParticleData(Particles);
 
-        // Begin rendering (draw scene)
+        // Rendering 
         OGL_CHECKPOINT_DEBUG();
-
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         // Start GPU and CPU timing
@@ -686,18 +632,11 @@ else
        cpuSubmitBegin(gProfiler);
         if (!SplitScreen)
         {
-            // Single fullscreen view
-            glViewport(0, 0,
-                       (int)fbwidth,
-                       (int)fbheight);
+            // Fullscreen single view
+            glViewport(0, 0,(int)fbwidth,(int)fbheight);
 
-            CameraResult camResult = computeCameraView(
-                FirstPerson,
-                CameraView,
-                spaceship_current_position,
-                forwardWS,
-                landing_position
-            );
+            CameraResult camResult = computeCameraView(FirstPerson, CameraView, spaceship_current_position,
+                forwardWS, landing_position );
 
             Mat44f view_projection = proj * camResult.view;
 
@@ -731,19 +670,13 @@ else
             int rightWidth = (int)fbwidth - leftWidth;
             int fullHeight = (int)fbheight;
 
-            // Left view (primary camera)
+            // Left view (main camera)
             glViewport(0, 0, leftWidth, fullHeight);
             float aspectLeft = float(leftWidth) / float(fullHeight);
-            Mat44f projLeft =
-                make_perspective_projection(fovRadians, aspectLeft, zNear, zFar);
+            Mat44f projLeft = make_perspective_projection(fovRadians, aspectLeft, zNear, zFar);
 
-            CameraResult camResult1 = computeCameraView(
-                FirstPerson,
-                CameraView,
-                spaceship_current_position,
-                forwardWS,
-                landing_position
-            );
+            CameraResult camResult1 = computeCameraView(FirstPerson, CameraView, spaceship_current_position,
+                forwardWS, landing_position );
 
             Mat44f viewProj1 = projLeft * camResult1.view;
 
@@ -769,19 +702,13 @@ else
                 gProfiler, true
             );
 
-            // Right view (secondary camera mode)
+            // Right view 
             glViewport(leftWidth, 0, rightWidth, fullHeight);
             float aspectRight = float(rightWidth) / float(fullHeight);
-            Mat44f projRight =
-                make_perspective_projection(fovRadians, aspectRight, zNear, zFar);
+            Mat44f projRight = make_perspective_projection(fovRadians, aspectRight, zNear, zFar);
 
-            CameraResult camResult2 = computeCameraView(
-                Tracking,
-                CameraView,
-                spaceship_current_position,
-                forwardWS,
-                landing_position
-            );
+            CameraResult camResult2 = computeCameraView(Tracking, CameraView, spaceship_current_position,
+                forwardWS, landing_position );
 
             Mat44f viewProj2 = projRight * camResult2.view;
 
@@ -804,34 +731,30 @@ else
                 landing_position,
                 landing2_position,
                 particle_shader,
-                gProfiler, false
+                gProfiler, false // so does not stamp terrain twice
             );
 
-            // Restore full viewport
+            // Reset viewport to full size for UI
             glViewport(0, 0, (int)fbwidth, (int)fbheight);
         }
 
         // End GPU and CPU timing
         cpuSubmitEnd(gProfiler);
-        gpuStamp(gProfiler, Stamp::FrameEnd);   // after ALL scene rendering (including particles)
-        gpuCollectResults(gProfiler);            // reads old frames + prints every N frames
+        gpuStamp(gProfiler, Stamp::FrameEnd);
+        gpuCollectResults(gProfiler);
 
-
-        // Draws UI overlay (altitude and control buttons)
+        // Draws UI altitude and buttons
         uiRenderer.setWindowSize((int)fbwidth, (int)fbheight);
         uiRenderer.beginFrame();
 
         // Altitude in top left
         char altitudeText[64];
         std::snprintf(altitudeText, sizeof(altitudeText),"Altitude: %.1f m", spaceship_current_position.y);
-        uiRenderer.renderText(
-            10.0f, 10.0f,
-            altitudeText,
-            24.0f,
+        uiRenderer.renderText( 10.0f, 10.0f, altitudeText, 24.0f,
             Vec4f{1.0f, 1.0f, 1.0f, 1.0f}
         );
 
-        // Launch button (start/pause animation)
+        // Launch button that starts if not active and pauses if active
         if (uiRenderer.renderButton(launchButton, mouse_x, mouse_y, MouseClick))
         {
             if (!SpaceshipAnimation.active)
@@ -846,25 +769,19 @@ else
             }
         }
 
-        // Reset button (stops animation and clears particles)
+        // Reset button that sstops animation and resets particles
         if (uiRenderer.renderButton(resetButton, mouse_x, mouse_y, MouseClick))
         {
             SpaceshipAnimation.active = false;
             SpaceshipAnimation.paused = false;
             SpaceshipAnimation.time = 0.f;
-
             resetParticles(Particles);
         }
-
-        uiRenderer.endFrame(); // flush the UI
-
+        uiRenderer.endFrame();
 
         glfwSwapBuffers( window );
     }
-
-    // Cleanup
     gpuDestroy(gProfiler);
-
     return 0;
 }
 catch( std::exception const& eErr )
@@ -874,7 +791,6 @@ catch( std::exception const& eErr )
     std::print( stderr, "Bye.\n" );
     return 1;
 }
-
 
 // CALLBACKS
 namespace
@@ -954,7 +870,7 @@ namespace
         if (aKey == GLFW_KEY_V && aAction == GLFW_PRESS)
             SplitScreen = !SplitScreen;
 
-        // Camera mode cycling (C for left, Shift+C for right)
+        // Camera mode cycling (C for left and Shift+C for right)
         if (aKey == GLFW_KEY_C && aAction == GLFW_PRESS)
         {
             bool shiftPressed =
