@@ -3,10 +3,10 @@
 #include <cstdlib>
 #include <numbers>
 
-// Static buffer for uploading positions to GPU
+// upload particle positions to GPU
 static Vec3f sParticlePositions[kMaxParticles];
 
-// Find a free particle slot (returns -1 if none available)
+// reuse empty slots from particles that died
 static int allocParticle(ParticleSystem& ps)
 {
     for (int i = 0; i < kMaxParticles; ++i)
@@ -14,19 +14,21 @@ static int allocParticle(ParticleSystem& ps)
         if (ps.particles[i].life <= 0.0f)
             return i;
     }
+    // no free slots
     return -1;
 }
 
-void initParticleSystem(ParticleSystem& ps, const char* texturePath)
+void initialize_ParticleSystem(ParticleSystem& ps, const char* texturePath)
 {
-    // Initialize all particles as dead
+    // start with all particles being dead (none are visible)
     for (int i = 0; i < kMaxParticles; ++i)
         ps.particles[i].life = -1.0f;
 
-    ps.aliveCount = 0;
-    ps.emissionAccumulator = 0.0f;
+    ps.alive_count = 0;
+    // make an accumulator so that particles spawn smoothly
+    ps.emission_accumulator = 0.0f;
 
-    // Create VAO and VBO
+    // vao and vbo for particle
     glGenVertexArrays(1, &ps.vao);
     glGenBuffers(1, &ps.vbo);
 
@@ -36,15 +38,20 @@ void initParticleSystem(ParticleSystem& ps, const char* texturePath)
     glBufferData(
         GL_ARRAY_BUFFER,
         kMaxParticles * sizeof(Vec3f),
-        nullptr,
+        0,
         GL_DYNAMIC_DRAW
     );
 
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(
-        0, 3, GL_FLOAT, GL_FALSE,
+        0,
+        // xyz
+        3,
+        GL_FLOAT, 
+        GL_FALSE,
+        // stride is one particle position
         sizeof(Vec3f),
-        (void*)0
+        0
     );
 
     glBindVertexArray(0);
@@ -54,118 +61,139 @@ void initParticleSystem(ParticleSystem& ps, const char* texturePath)
     ps.texture = load_texture_2d(texturePath, false);
 }
 
+// remove all particles and reset
 void resetParticles(ParticleSystem& ps)
 {
     for (int i = 0; i < kMaxParticles; ++i)
         ps.particles[i].life = -1.0f;
 
-    ps.aliveCount = 0;
-    ps.emissionAccumulator = 0.0f;
+    ps.alive_count = 0;
+    ps.emission_accumulator = 0.0f;
 }
+
 
 void emitParticles(
     ParticleSystem& ps,
     float dt,
-    Vec3f const& enginePosPrev,
-    Vec3f const& enginePosCurr,
-    Vec3f const& forwardWS,
-    Vec3f const& rightWS,
-    Vec3f const& upWS
+    Vec3f const& previous_engine_position,
+    Vec3f const& current_engine_position,
+    Vec3f const& forward,
+    Vec3f const& right,
+    Vec3f const& up
 )
 {
-    ps.emissionAccumulator += ps.emissionRate * dt;
-    int toSpawn = (int)ps.emissionAccumulator;
+    // particles are produced in a rate per secionds
+    ps.emission_accumulator += ps.emission_rate * dt;
+    // spawn as many paritcles as possible (decimals are truncated)
+    int toSpawn = (int)ps.emission_accumulator;
+    // count how many particles are left to spawn
     if (toSpawn > 0)
-        ps.emissionAccumulator -= (float)toSpawn;
+        ps.emission_accumulator -= (float)toSpawn;
 
-    Vec3f baseVel = -forwardWS * 7.0f;
+    // how fast particles shoot out, base velocity is calculated in negative since particles are emitted opposite the spaceship
+    Vec3f base_velocity = -forward * 7.0f;
 
-    const float spreadRadius   = 0.2f;
-    const float verticalSpread = 0.4f;   // if you want some vertical noise
+    // how wide and far the particle spread
+    const float spread_radius = 0.2f;
+    const float spread_length = 0.4f;
 
+    // spawn particles individually
     for (int n = 0; n < toSpawn; ++n)
     {
+        // use empty slots defined earlier
         int idx = allocParticle(ps);
         if (idx < 0)
             break;
 
-        // 1) Pick a random point along the engine path this frame
-        float uPos = std::rand() / float(RAND_MAX);   // [0,1]
-        Vec3f nozzleBack = -forwardWS * 0.2f;
-        Vec3f enginePos =
-                            enginePosPrev + (enginePosCurr - enginePosPrev) * uPos
-                            + nozzleBack;
+        // spawn at a random point that the rocket has passed
+        float initial_position = std::rand() / float(RAND_MAX);
+        // start from the base of the rocket (engine/exhaust)
+        Vec3f nozzle = -forward * 0.2f;
+        // interpolate between engine positions to define particles path 
+        Vec3f engine_position = previous_engine_position + (current_engine_position - previous_engine_position) * initial_position + nozzle;
 
-        // 2) Random offset in a disk around the nozzle
+        // generate particle uniform distribution at random to avoid more particles being created in one place than another
         float u1   = std::rand() / float(RAND_MAX);
         float u2r  = std::rand() / float(RAND_MAX);
-        float r    = spreadRadius * std::sqrt(u1);
-        float theta = 2.0f * std::numbers::pi_v<float> * u2r;
+        float r    = spread_radius * std::sqrt(u1);
+        float angle = 2.0f * std::numbers::pi_v<float> * u2r;
 
-        float dx = r * std::cos(theta);
-        float dz = r * std::sin(theta);
-        float dy = (std::rand() / float(RAND_MAX) - 0.5f) * verticalSpread;
+        // convert polar to x/z offsets
+        float dx = r * std::cos(angle);
+        float dz = r * std::sin(angle);
+        float dy = (std::rand() / float(RAND_MAX) - 0.5f) * spread_length;
 
-        Vec3f offset = rightWS * dx + upWS * dz + Vec3f{0.f, dy, 0.f};
+        // convert to world space orientation
+        Vec3f offset = right * dx + up * dz + Vec3f{0.f, dy, 0.f};
 
-        // 3) Velocity with jitter
+        // jitter to make particles have more natural affect (x=z)
         Vec3f jitter{
             (std::rand() / float(RAND_MAX) - 0.5f) * 6.0f,
             (std::rand() / float(RAND_MAX) - 0.5f) * 3.0f,
             (std::rand() / float(RAND_MAX) - 0.5f) * 6.0f
         };
-        Vec3f vel = baseVel + jitter;
 
-        // 4) Sub-frame "age" so particles of this batch are not all the same age
-        float tFrac = std::rand() / float(RAND_MAX);   // [0,1]
-        Vec3f substepOffset = -vel * (tFrac * dt);     // negative: as if they already moved a bit
+        // final velocity of particles
+        Vec3f pVelocity = base_velocity + jitter;
 
-        ps.particles[idx].pos  = enginePos + offset + substepOffset;
-        ps.particles[idx].vel  = vel;
+        // randomize start age of each particle
+        float age = std::rand() / float(RAND_MAX);
+        Vec3f substepOffset = -pVelocity * (age * dt);
 
-        float lifeRand = std::rand() / float(RAND_MAX);
-        ps.particles[idx].life = 0.6f + 0.6f * lifeRand;   // [0.6, 1.2] s
+        // particle intial position
+        ps.particles[idx].position  = engine_position + offset + substepOffset;
+        // particle velpcity
+        ps.particles[idx].velocity  = pVelocity;
+
+        // randomise lifetime of each particle
+        float life = std::rand() / float(RAND_MAX);
+        ps.particles[idx].life = 0.6f + 0.6f * life;
     }
 }
 
 
 void updateParticles(ParticleSystem& ps, float dt)
 {
+    // update each particle
     for (int i = 0; i < kMaxParticles; ++i)
     {
+        // only alive particles
         if (ps.particles[i].life > 0.0f)
         {
+            // decrease life time by time elapsed
             ps.particles[i].life -= dt;
+            //  update position if it still alive
             if (ps.particles[i].life > 0.0f)
             {
-                ps.particles[i].pos =
-                   ps.particles[i].pos + ps.particles[i].vel * dt;
+                ps.particles[i].position = ps.particles[i].position + ps.particles[i].velocity * dt;
 
-                // Ground collision
-                if (ps.particles[i].pos.y < -0.98f)
+                // particles dont go below the ground
+                if (ps.particles[i].position.y < -0.98f)
                     ps.particles[i].life = 0.0f;
             }
         }
     }
 }
 
+// upload alive partivles to buffer
 void uploadParticleData(ParticleSystem& ps)
 {
     int alive = 0;
     for (int i = 0; i < kMaxParticles; ++i)
     {
         if (ps.particles[i].life > 0.0f){
-            sParticlePositions[alive++] = ps.particles[i].pos;
+            sParticlePositions[alive++] = ps.particles[i].position;
     }}
-    ps.aliveCount = alive;
+    ps.alive_count = alive;
 
-    if (ps.aliveCount > 0)
+    if (ps.alive_count > 0)
     {
+        // upload alive particles positions to GPU
         glBindBuffer(GL_ARRAY_BUFFER, ps.vbo);
         glBufferSubData(
             GL_ARRAY_BUFFER,
             0,
-            ps.aliveCount * sizeof(Vec3f),
+            ps.alive_count * sizeof(Vec3f),
             sParticlePositions
         );
         glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -176,34 +204,42 @@ void renderParticles(
     ParticleSystem const& ps,
     GLuint programId,
     float const* viewProjMatrix,
-    Vec3f const& camPos
+    Vec3f const& camPosition
 )
 {
-    if (ps.aliveCount <= 0)
+    if (ps.alive_count <= 0){
         return;
+    }
 
+    // use particle shader
     glUseProgram(programId);
 
-    // Enable alpha blending and disable depth writes
+    // alpha blending
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    // disable depth writing so particles dont block each other
     glDepthMask(GL_FALSE);
 
+    // upload view projection matrix
     glUniformMatrix4fv(0, 1, GL_TRUE, viewProjMatrix);
-    glUniform1f(1, 6.0f); // point size
-    glUniform3fv(4, 1, &camPos.x);
+    // uplaod particle size
+    glUniform1f(1, 6.0f);
+    // upload camera positioning
+    glUniform3fv(4, 1, &camPosition.x);
 
-    Vec3f exhaustColor{ 0.9f, 0.9f, 1.0f };
-    glUniform3fv(2, 1, &exhaustColor.x);
+    // Vec3f exhaustColor{ 0.9f, 0.9f, 1.0f };
+    // glUniform3fv(2, 1, &exhaustColor.x);
 
+    // use particle texture
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, ps.texture);
     glUniform1i(3, 0);
 
     glBindVertexArray(ps.vao);
-    glDrawArrays(GL_POINTS, 0, ps.aliveCount);
+    // each vertex is a sprite not triangle (GL_POINTS) 
+    glDrawArrays(GL_POINTS, 0, ps.alive_count);
     glBindVertexArray(0);
 
-    // Restore depth writes
+    // renable depth for normal scene rending
     glDepthMask(GL_TRUE);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }

@@ -2,7 +2,6 @@
 
 layout(location = 0) in vec3 iPosition;
 layout(location = 1) in vec3 iNormal;
-// layout(location = 2) in vec3 iColor;     // Not used here
 layout(location = 3) in vec2 iTexCoord;  // For terrain (textured)
 // Material properties (for UFO with materials)
 layout(location = 4) in float iNs;

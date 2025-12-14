@@ -4,60 +4,58 @@
 #include <glad/glad.h>
 #include "../vmlib/vec3.hpp"
 
-// Maximum number of particles
 constexpr int kMaxParticles = 70000;
 
-// Single particle data
+// a particle has a position, velocity, and lifetime
 struct Particle
 {
-    Vec3f pos;
-    Vec3f vel;
+    Vec3f position;
+    Vec3f velocity;
     float life;
 };
 
-// Particle system state
+// this stores all the data required to handle a particle
 struct ParticleSystem
 {
     Particle particles[kMaxParticles];
-    int aliveCount = 0;
-    float emissionAccumulator = 0.0f;
-    float emissionRate = 15000.0f; // particles per second
-
+    int alive_count = 0;
+    float emission_accumulator = 0.0f;
+    float emission_rate = 15000.0f;
+    // rendering
     GLuint vao = 0;
     GLuint vbo = 0;
     GLuint texture = 0;
 };
 
-// Initialize particle system (creates VAO/VBO, loads texture)
-void initParticleSystem(ParticleSystem& ps, const char* texturePath);
+// initialize particles and load texture
+void initialize_ParticleSystem(ParticleSystem& ps, const char* texturePath);
 
-// Reset all particles to dead state
+// remove all particles at reset
 void resetParticles(ParticleSystem& ps);
 
-// Emit new particles from engine position
+// spawn particles based on emission rate and engine position
 void emitParticles(
     ParticleSystem& ps,
     float dt,
-    // Vec3f const& enginePos,
-     Vec3f const& prevEnginePos,
-        Vec3f const& enginePosCurr,
-    Vec3f const& forwardWS,
-    Vec3f const& rightWS,
-    Vec3f const& upWS
+    Vec3f const& previous_engine_position,
+    Vec3f const& current_engine_position,
+    Vec3f const& forward,
+    Vec3f const& right,
+    Vec3f const& up
 );
 
-// Update particle positions and kill dead/ground-collision particles
+// update positions and lifetime 
 void updateParticles(ParticleSystem& ps, float dt);
 
-// Upload alive particle positions to GPU
+// upload to gpu
 void uploadParticleData(ParticleSystem& ps);
 
-// Render particles (call between glUseProgram and setting uniforms externally)
+// render using point sprites
 void renderParticles(
     ParticleSystem const& ps,
     GLuint programId,
     float const* viewProjMatrix,
-    Vec3f const& camPos
+    Vec3f const& camPosition
 );
 
-#endif // PARTICLES_HPP
+#endif

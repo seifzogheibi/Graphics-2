@@ -25,13 +25,10 @@ struct SimpleMeshData
 	{
 		return !texture_filepath.empty();
 	}
-
-
 	std::string texture_filepath;
 };
 
 SimpleMeshData concatenate( SimpleMeshData, SimpleMeshData const& );
-
 
 GLuint create_vao( SimpleMeshData const& );
 

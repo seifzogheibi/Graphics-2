@@ -45,7 +45,7 @@ for( auto const& shape : res.shapes )
 			res.attributes.normals[idx.normal_index*3+2]
 		} );
 
-		        // Safe texcoord fetch: if no texcoord, use (0,0)
+		// Safe texcoord fetch: if no texcoord, use (0,0)
         Vec2f uv{ 0.f, 0.f };
         if( idx.texcoord_index >= 0 )
         {

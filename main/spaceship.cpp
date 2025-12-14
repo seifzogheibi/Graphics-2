@@ -1,5 +1,3 @@
-// ufo.cpp
-
 #include "spaceship.hpp"
 #include "shapes.hpp"
 
@@ -11,66 +9,62 @@
 #include "../vmlib/vec4.hpp"
 #include "../vmlib/mat44.hpp"
 
-UfoMesh create_ufo_mesh()
+spaceshipMesh create_spaceship_mesh()
 {
-    // =====================
-    // Build UFO using SimpleMeshData + pre-transform matrices
-    // =====================
-
-    // Common material values
+    // primary color/body material
     Vec3f KaBody{0.1f, 0.1f, 0.1f};
     Vec3f KdBody{0.9f, 0.9f, 0.9f};
     Vec3f KeBody{0.0f, 0.0f, 0.0f};
     Vec3f KsBody{0.8f, 0.8f, 0.8f};
-    float NsBody = 64.0f;   // shininess in x
+    float NsBody = 64.0f;
 
+    // secondary color material
     Vec3f KaPink{0.05f, 0.0f, 0.02f};
     Vec3f KdPink{1.0f, 0.0f, 0.8f};
     Vec3f KePink{0.0f, 0.0f, 0.0f};
     Vec3f KsPink{0.9f, 0.6f, 0.9f};
     float NsPink = 32.f;
 
-    Vec3f KaEngine{0.05f, 0.05f, 0.06f};      // subtle cool metal tint
-    Vec3f KdEngine{0.77f, 0.77f, 0.77f};      // ALMOST no diffuse
+    // engine material
+    Vec3f KaEngine{0.05f, 0.05f, 0.06f};
+    Vec3f KdEngine{0.77f, 0.77f, 0.77f};
     Vec3f KeEngine{0.0f, 0.0f, 0.0f};
-    Vec3f KsEngine{1.0f, 1.0f, 1.0f};         // perfect mirror specular
-    float NsEngine = 256.0f;            // very shiny
+    Vec3f KsEngine{1.0f, 1.0f, 1.0f};
+    float NsEngine = 256.0f;
 
+    // vertex color to be stored 
     Vec3f white{1.f, 1.f, 1.f};
-
-    // ----- Dimensions in local UFO space -----
-    float bodyHeight   = 5.0f;
-    float bodyRadius   = 0.4f;
+    
+    // BODY
+    // size in local spaceship space
+    float bodyHeight = 5.0f;
+    float bodyRadius = 0.4f;
     float engineHeight = 0.8f;
     float engineRadius = bodyRadius * 1.5f;
+    float bodyBottomY = -bodyHeight * 0.5f;
+    float bodyTopY = bodyHeight * 0.5f;
+    float const halfBodyHeight = bodyHeight * 0.5f;
 
-    float bodyBottomY = -bodyHeight * 0.5f; // -3
-    float bodyTopY    =  bodyHeight * 0.5f; // +3
+    // body pre-transform
+    Mat44f bodyPre =
+        // move cylinder so that it centers around y=0 after scaling
+        make_translation(Vec3f{0.f, -halfBodyHeight, 0.f}) *
+        // rotate cylinder 90deg about z, since make_cylinder creates it on +x and the cylinder in this case must be upright (+y)
+        make_rotation_z(0.5f * std::numbers::pi_v<float>) *
+        // scale x to body height, y/z to body radius
+        make_scaling(bodyHeight, bodyRadius, bodyRadius);
 
-    // =====================
-    // BASE MESH (body + exhaust cone + bulbs)
-    // =====================
-
-    // Body: cylinder along local Y, scaled to height 6 and radius 0.4
-   float const halfBodyHeight = bodyHeight * 0.5f;
-
-Mat44f bodyPre =
-    // move from [0, bodyHeight] to [-bodyHeight/2, +bodyHeight/2]
-    make_translation(Vec3f{0.f, -halfBodyHeight, 0.f}) *
-    // rotate axis from X to Y (90 degrees about Z)
-    make_rotation_z(0.5f * std::numbers::pi_v<float>) *
-    // scale: length along X, radius in YZ
-    make_scaling(bodyHeight, bodyRadius, bodyRadius);
-
+    // build body
     SimpleMeshData bodyMesh = make_cylinder(
-        true,          // capped
-        60,            // subdivisions
-        white,         // vertex color
+        true,
+        60,
+        white,
         bodyPre,
         NsBody, KaBody, KdBody, KeBody, KsBody
     );
 
-    // Exhaust: cone at bottom, flared out
+    // ENGINE
+    // place at the bottom of the cylinder
     float engineCenterY = bodyBottomY + engineHeight * 0.5f;
     float const halfEngineHeight = engineHeight * 0.5f;
 
@@ -87,122 +81,97 @@ Mat44f bodyPre =
         NsEngine, KaEngine, KdEngine, KeEngine, KsEngine
     );
 
-    // Bulbs: three tiny cylinders around a ring
-    // Common scale for the “bulb” cubes
+    // BULBS
 
-float bulbRingY   = 0.7f;                 // somewhere around mid-body
-float bulbRadius  = bodyRadius;    // just outside the hull
+    float bulbsHeight = 0.7f;
+    // positions for bulbs around the cylinder
+    float angle0 = 0.0f;
+    float angle120 = 2.0f * std::numbers::pi_v<float> / 3.0f;
+    float angle240 = 4.0f * std::numbers::pi_v<float> / 3.0f;
 
-Mat44f lightScale = make_scaling(0.1f, 0.1f, 0.1f);
+    // red bulb pre-transform
+    // position around y, translate outwards, then scale to smaller size
+    Mat44f redPre =
+        make_rotation_y(angle0) *
+        make_translation(Vec3f{ bodyRadius, bulbsHeight, 0.0f }) * 
+        make_scaling(0.1f, 0.1f, 0.1f);
 
-// Angles for 3 bulbs (0°, 120°, 240°)
-float angle0 = 0.0f;
-float angle4 = 4.0f * std::numbers::pi_v<float> / 3.0f;
-float angle12 = 2.0f * std::numbers::pi_v<float> / 3.0f;
+    SimpleMeshData redB = make_cube(
+        true,
+        1,
+        white,
+        redPre,
+        // same properties as engine works
+        NsEngine,
+        KaEngine,
+        // change kd to red
+        Vec3f {1.f, 0.f, 0.f},
+        KeEngine,
+        KsEngine
+    );
 
-// Red light cube
-Mat44f redPre =
-    make_rotation_y(angle0) *
-    make_translation(Vec3f{ bulbRadius, bulbRingY, 0.0f }) *
-    lightScale;
+    // green bulb
+    Mat44f greenPre =
+    make_rotation_y(angle240) *
+        make_translation(Vec3f{ bodyRadius, bulbsHeight, 0.0f }) *
+        make_scaling(0.1f, 0.1f, 0.1f);
 
-SimpleMeshData redLightCube = make_cube(
-    true,
-    1,
-    Vec3f{1.f, 0.f, 0.f},
-    redPre,
-    NsEngine,
-    KaEngine,
-    Vec3f {1.f, 0.f, 0.f},
-    KeEngine,
-    KsEngine
-);
+    SimpleMeshData greenB = make_cube(
+        true,
+        1,
+        white,
+        greenPre,
+        NsEngine,
+        KaEngine,
+        // green
+        Vec3f {0.f, 1.f, 0.f},
+        KeEngine,
+        KsEngine
+    );
 
-// Green light cube
-Mat44f greenPre =
- make_rotation_y(angle4) *
-    make_translation(Vec3f{ bulbRadius, bulbRingY, 0.0f }) *
-    lightScale;
+    // blue bulb
+    Mat44f bluePre =
+        make_rotation_y(angle120) *
+        make_translation(Vec3f{ bodyRadius, bulbsHeight, 0.0f }) *
+        make_scaling(0.1f, 0.1f, 0.1f);
 
-SimpleMeshData greenLightCube = make_cube(
-    true,
-    1,
-    Vec3f{0.f, 1.f, 0.f},
-    greenPre,
-    NsEngine,
-    KaEngine,
-    Vec3f {0.f, 1.f, 0.f},
-    KeEngine,
-    KsEngine
-);
+    SimpleMeshData blueB= make_cube(
+        true,
+        1,
+        white,
+        bluePre,
+        NsEngine,
+        KaEngine,
+        // blue
+        Vec3f {0.f, 0.65f, 1.f},
+        KeEngine,
+        KsEngine
+    );
 
-// Blue light cube
-Mat44f bluePre =
-    make_rotation_y(angle12) *
-    make_translation(Vec3f{ bulbRadius, bulbRingY, 0.0f }) *
-    lightScale;
-
-SimpleMeshData blueLightCube = make_cube(
-    true,
-    1,
-    Vec3f{0.f, 0.f, 1.f},
-    bluePre,
-    NsEngine,
-    KaEngine,
-    Vec3f {0.f, 0.65f, 1.f},
-    KeEngine,
-    KsEngine
-);
-
-
-    // =====================
-    // FINS (3 right triangles evenly spaced around body)
-    // =====================
-
-    float finHeight   = 1.2f;     // vertical size
-    float finLength   = 1.0f;     // how far it sticks out
+    // FINS
+    float finHeight = 1.2f;
+    float finLength = 1.0f;
     float finThickness = .3f;
-    float finBaseY    = bodyBottomY + 0.4f; // vertical position of the base
+    float finBaseY = bodyBottomY + 0.4f;
+    float finRadius = 0.4f;
 
-    float finRadius = 0.4f;            // distance from centre (you requested 0.4f)
-    float twoPi = 2.0f * std::numbers::pi_v<float>;
-
-    // Angle step for 3 fins
-    float angleStep = twoPi / 3.0f;
-
-    // Fin 0
-    Mat44f finPre0 =
-        make_rotation_y(0.0f) *
+    // fin 1 pre transform
+    Mat44f finPre =
+        make_rotation_y(angle0) *
         make_translation(Vec3f{finRadius, finBaseY, 0.0f}) *
         make_scaling(finLength, finHeight, finThickness);
 
-    SimpleMeshData finMesh0 = make_fin(
+    SimpleMeshData finMesh = make_fin(
         true,
         16,
         white,
-        finPre0,
+        finPre,
         NsPink, KaPink, KdPink, KePink, KsPink
     );
 
-    // Fin 1 (rotated 120 degrees)
-    float angle1 = angleStep;
-    Mat44f finPre1 =
-        make_rotation_y(angle1) *
-        make_translation(Vec3f{finRadius, finBaseY, 0.0f}) *
-        make_scaling(finLength, finHeight, finThickness);
-
-    SimpleMeshData finMesh1 = make_fin(
-        true,
-        16,
-        white,
-        finPre1,
-        NsPink, KaPink, KdPink, KePink, KsPink
-    );
-
-    // Fin 2 (rotated 240 degrees)
-    float angle2 = 2.0f * angleStep;
+    // fin 2 
     Mat44f finPre2 =
-        make_rotation_y(angle2) *
+        make_rotation_y(angle120) *
         make_translation(Vec3f{finRadius, finBaseY, 0.0f}) *
         make_scaling(finLength, finHeight, finThickness);
 
@@ -214,47 +183,51 @@ SimpleMeshData blueLightCube = make_cube(
         NsPink, KaPink, KdPink, KePink, KsPink
     );
 
+    // fin 3
+    Mat44f finPre3 =
+        make_rotation_y(angle240) *
+        make_translation(Vec3f{finRadius, finBaseY, 0.0f}) *
+        make_scaling(finLength, finHeight, finThickness);
 
-    // Concatenate all base parts
+    SimpleMeshData finMesh3 = make_fin(
+        true,
+        16,
+        white,
+        finPre3,
+        NsPink, KaPink, KdPink, KePink, KsPink
+    );
+
+
+    // combine iniial body parts to base cylinder (bulbs, fins, engine)
     SimpleMeshData baseMesh = concatenate(bodyMesh, engineMesh);
-    baseMesh = concatenate( baseMesh, redLightCube);
-    baseMesh = concatenate(baseMesh, greenLightCube);
-    baseMesh = concatenate(baseMesh, blueLightCube);
-
-
-     // Add fins
-    baseMesh = concatenate(baseMesh, finMesh0);
-    baseMesh = concatenate(baseMesh, finMesh1);
+    baseMesh = concatenate( baseMesh, redB);
+    baseMesh = concatenate(baseMesh, greenB);
+    baseMesh = concatenate(baseMesh, blueB);
+    baseMesh = concatenate(baseMesh, finMesh);
     baseMesh = concatenate(baseMesh, finMesh2);
+    baseMesh = concatenate(baseMesh, finMesh3);
 
-    // =====================
-    // TOP MESH (neck + big pink cone + antenna + tip)
-    // =====================
-
+    // UPPER SPACESHIP
+    // NECK
     float neckHeight = 0.5f;
     float neckRadius = bodyRadius;
     float neckCenterY = bodyTopY + neckHeight * 0.5f;
-
     float const halfNeckHeight = neckHeight * 0.5f;
 
 Mat44f neckPre =
-    // move bottom of neck to correct world Y
     make_translation(Vec3f{0.f, neckCenterY - halfNeckHeight, 0.f}) *
-    // rotate axis from X to Y
     make_rotation_z(0.5f * std::numbers::pi_v<float>) *
-    // scale: length along X, radius in YZ
     make_scaling(neckHeight, neckRadius, neckRadius);
-
 
     SimpleMeshData neckMesh = make_cylinder(
         true,
         48,
-        Vec3f{1.f, 0.75f, 0.8f},  // hot pink
+        white,
         neckPre,
         NsPink, KaPink, KdPink, KePink, KsPink
     );
 
-    // Big pink cone under antenna
+    // TOP CONE
     float coneHeight = 2.f;
     float coneRadius = bodyRadius;
     float coneCenterY = bodyTopY + neckHeight + coneHeight * 0.5f;
@@ -265,20 +238,18 @@ Mat44f neckPre =
         make_rotation_z(0.5f * std::numbers::pi_v<float>) *
         make_scaling(coneHeight, coneRadius, coneRadius);
 
-
     SimpleMeshData coneMesh = make_cone(
         true,
         48,
-        Vec3f{1.0f,0.75f, 0.8f},  // pink colour
+        white,
         conePre,
         NsPink, KaPink, KdPink, KePink, KsPink
     );
 
-    // Thin antenna cylinder on top
+    // ANTENNA
     float antennaHeight = 0.5f;
     float antennaRadius = 0.05f;
-    float antennaCenterY =
-        bodyTopY + neckHeight + coneHeight - antennaHeight * 0.5f;
+    float antennaCenterY = bodyTopY + neckHeight + coneHeight - antennaHeight * 0.5f;
 
     float const halfAntennaHeight = antennaHeight * 0.5f;
 
@@ -291,12 +262,12 @@ Mat44f neckPre =
     SimpleMeshData antennaMesh = make_cylinder(
         true,
         16,
-        Vec3f{1.0f,0.75f, 0.8f},
+        white,
         antennaPre,
         NsPink, KaPink, KdPink, KePink, KsPink
     );
 
-    // Tiny tip cone at very top
+    // TIP
     float tipHeight = 0.3f;
     float tipRadius = antennaRadius;
     float tipCenterY = antennaCenterY + 0.5f * (antennaHeight + tipHeight);
@@ -315,26 +286,22 @@ Mat44f neckPre =
         NsPink, KaPink, KdPink, KePink, KsPink
     );
 
+    // combine upper spaceship (neck, antenna, tip)
     SimpleMeshData topMesh = concatenate(neckMesh, coneMesh);
     topMesh = concatenate(topMesh, antennaMesh);
     topMesh = concatenate(topMesh, tipMesh);
 
+    // combine body with upper spaceship
+    SimpleMeshData spaceshipMeshData = concatenate(baseMesh, topMesh);
 
-    // =====================
-    // FINAL UFO MESH + COUNTS
-    // =====================
+    // use a vao to upload mesh
+    GLuint spaceshipVAO = create_vao(spaceshipMeshData);
+    GLsizei spaceshipVertexCount = (GLsizei)spaceshipMeshData.positions.size();
 
-    SimpleMeshData ufoMeshData = concatenate(baseMesh, topMesh);
-
-    // // Create VAO for the spaceship
-    MeshGL ufoMesh;
-    GLuint ufoVAO = create_vao(ufoMeshData);
-    ufoMesh.vao         = ufoVAO;
-    ufoMesh.vertexCount = (GLsizei)ufoMeshData.positions.size();
-
-    return UfoMesh{
-        ufoMesh,
-        bulbRingY,
-        bulbRadius
+    return spaceshipMesh{
+        spaceshipVAO,
+        spaceshipVertexCount,
+        bulbRingHeight,
+        bodyRadius
     };
 }

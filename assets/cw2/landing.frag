@@ -4,12 +4,12 @@
 in vec3 vNormal;
 in vec3 vPosition;
 
-// Material values
-in vec3 vKa; // ambient
-in vec3 vKd; // diffuse
-in vec3 vKe; // emissive
-in vec3 vKs; // specular
-in float vNs;// shininess
+// Material data from landing.vert / SimpleMeshData
+in vec3 vKa;
+in vec3 vKd;
+in vec3 vKe;
+in vec3 vKs;
+in float vNs;
 
 // keeps same layout as terrain shader
 layout (location = 2)  uniform vec3 uLightDir;

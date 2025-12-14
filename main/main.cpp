@@ -442,7 +442,8 @@ int main() try
         {GL_FRAGMENT_SHADER, "assets/cw2/particle.frag"}
     });
 
-    initParticleSystem(Particles, "assets/cw2/particle.png");
+    initialize_ParticleSystem(Particles, "assets/cw2/particle.png");
+
     OGL_CHECKPOINT_ALWAYS();
 
     // Main loop

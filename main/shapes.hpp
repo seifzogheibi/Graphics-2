@@ -1,4 +1,3 @@
-// spaceship.hpp
 #pragma once
 #include <vector>
 #include "../vmlib/vec3.hpp"
@@ -7,15 +6,15 @@
 
 
 SimpleMeshData make_cylinder(
-bool aCapped = true,
-std::size_t aSubdivs = 16,
-Vec3f aColor = { 1.f, 1.f, 1.f },
-Mat44f aPreTransform = kIdentity44f,
-float Ns = 32.f,
-Vec3f Ka = { 0.2f, 0.2f, 0.2f },
-Vec3f Kd = { 0.8f, 0.8f, 0.8f },
-Vec3f Ke = { 0.f, 0.f, 0.f },
-Vec3f Ks = { 0.5f, 0.5f, 0.5f }
+    bool aCapped = true,
+    std::size_t aSubdivs = 16,
+    Vec3f aColor = { 1.f, 1.f, 1.f },
+    Mat44f aPreTransform = kIdentity44f,
+    float Ns = 32.f,
+    Vec3f Ka = { 0.2f, 0.2f, 0.2f },
+    Vec3f Kd = { 0.8f, 0.8f, 0.8f },
+    Vec3f Ke = { 0.f, 0.f, 0.f },
+    Vec3f Ks = { 0.5f, 0.5f, 0.5f }
 );
 
 SimpleMeshData make_cone(
@@ -24,10 +23,10 @@ SimpleMeshData make_cone(
     Vec3f       aColor       = { 1.f, 1.f, 1.f },
     Mat44f      aPreTransform = kIdentity44f,
     float Ns = 32.f,
-Vec3f Ka = { 0.2f, 0.2f, 0.2f },
-Vec3f Kd = { 0.8f, 0.8f, 0.8f },
-Vec3f Ke = { 0.f, 0.f, 0.f },
-Vec3f Ks = { 0.5f, 0.5f, 0.5f }
+    Vec3f Ka = { 0.2f, 0.2f, 0.2f },
+    Vec3f Kd = { 0.8f, 0.8f, 0.8f },
+    Vec3f Ke = { 0.f, 0.f, 0.f },
+    Vec3f Ks = { 0.5f, 0.5f, 0.5f }
 );
 
 SimpleMeshData make_fin(
@@ -35,11 +34,11 @@ SimpleMeshData make_fin(
     std::size_t aSubdivs     = 16,
     Vec3f       aColor      = { 1.f, 1.f, 1.f },
     Mat44f      aPreTransform = kIdentity44f,
-float Ns = 32.f,
-Vec3f Ka = { 0.2f, 0.2f, 0.2f },
-Vec3f Kd = { 0.8f, 0.8f, 0.8f },
-Vec3f Ke = { 0.f, 0.f, 0.f },
-Vec3f Ks = { 0.5f, 0.5f, 0.5f }
+    float Ns = 32.f,
+    Vec3f Ka = { 0.2f, 0.2f, 0.2f },
+    Vec3f Kd = { 0.8f, 0.8f, 0.8f },
+    Vec3f Ke = { 0.f, 0.f, 0.f },
+    Vec3f Ks = { 0.5f, 0.5f, 0.5f }
 );
 
 SimpleMeshData make_cube(
