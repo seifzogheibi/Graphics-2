@@ -64,11 +64,7 @@ CameraResult computeCameraView(
     case CameraMode::Ground:
     {
         // Fixed camera on ground locked at the spaceship
-        Vec3f camera_position{
-            landing_position.x + 10.f,
-            landing_position.y + 1.f,
-            landing_position.z + 12.f
-        };
+        Vec3f camera_position{ landing_position.x + 10.f, landing_position.y + 1.f, landing_position.z + 12.f};
         // directionection from camera to spaceship
         Vec3f direction = normalize(spaceship_current_pos - camera_position);
         float camyaw = std::asin(direction.y);

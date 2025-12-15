@@ -11,15 +11,15 @@ in vec3 vKs;
 in float vNs;
 
 // keeps same layout as terrain shader
-layout (location = 2)  uniform vec3 uLightDir;
-layout (location = 4)  uniform vec3 uAmbientColor;
+layout (location = 2) uniform vec3 uLightDir;
+layout (location = 4) uniform vec3 uAmbientColor;
 
-layout (location = 6)  uniform vec3 uCameraPosition;
+layout (location = 6) uniform vec3 uCameraPosition;
 // spaceship lights
-layout (location = 7)  uniform vec3 uLocalLightPosition[3];
+layout (location = 7) uniform vec3 uLocalLightPosition[3];
 layout (location = 10) uniform vec3 uLocalLightColor[3];
-layout (location = 13) uniform int  uLocalLightOn[3];
-layout (location = 16) uniform int  uDirectionalOn; // directional light
+layout (location = 13) uniform int uLocalLightOn[3];
+layout (location = 16) uniform int uDirectionalOn; // directional light
 
 out vec4 oColor;
 
@@ -33,7 +33,7 @@ void main()
     vec3 Ka = vKa;
     vec3 Kd = vKd;
     vec3 Ks = vKs;
-    float Ns = max(vNs, 1.0);   // avoid zero
+    float Ns = max(vNs, 1.0); // avoid zero
 
     // Softer ambient and small emissive
     vec3 color = 0.3 * Ka * uAmbientColor + 0.3 * vKe;
@@ -50,7 +50,7 @@ void main()
             vec3 H = normalize(L + V);
             float NdotH = max(dot(N, H), 0.0);
 
-            vec3 diffuse  = 0.4 * Kd * NdotL;
+            vec3 diffuse = 0.4 * Kd * NdotL;
             vec3 specular = 0.2 * Ks * pow(NdotH, Ns);
             color += diffuse + specular;
         }
@@ -78,7 +78,7 @@ void main()
         vec3 lightColor = uLocalLightColor[i] * LocalLightBrightness;
 
         // makes it more shiny by reducing diffuse and making specular stronger
-        vec3 diffuse  = Kd * lightColor * NdotL * 1.0 / 3.141592;
+        vec3 diffuse = Kd * lightColor * NdotL * 1.0 / 3.141592;
         vec3 specular = Ks * lightColor * pow(NdotH, Ns) * (Ns + 2.0) / 8.0;
         color += attenuation * (diffuse + specular);
     }

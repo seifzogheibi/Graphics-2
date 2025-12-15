@@ -1,22 +1,19 @@
 #version 430 core
 
-// Matches the locations used in main.cpp
-layout(location = 2) uniform vec3 uColor;        // tint for the exhaust
-layout(location = 3) uniform sampler2D uTexture; // particle texture
-
+layout(location = 2) uniform vec3 uColor;
+layout(location = 3) uniform sampler2D uTexture;
 out vec4 outColor;
 
 void main()
 {
 
-    // Sample smoke/exhaust texture (must have alpha)
+    // Sample particle texture using point coordinates
     vec4 tex = texture(uTexture, gl_PointCoord);
 
-    // Kill almost-transparent pixels so we don't see a square
+    // removes very transparent pixels
     if (tex.a < 0.01)
         discard;
 
-    // Tint the RGB by uColor, keep alpha from texture
-    outColor = vec4(tex.rgb * uColor, tex.a);
+    outColor = vec4(tex.rgb * uColor, tex.a); // keep texture alpha
 }
 
