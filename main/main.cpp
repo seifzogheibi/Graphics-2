@@ -199,242 +199,109 @@ namespace
             LocalLight[2].enabled ? 1 : 0
         };
         
-        // ---------- helper setters (drop inside the function, before first use) ----------
-        auto U = [](GLuint prog, const char* name) -> GLint {
-            return glGetUniformLocation(prog, name);
-        };
 
-        auto setMat4 = [&](GLuint prog, const char* name, const Mat44f& m) {
-            GLint loc = U(prog, name);
-            if (loc >= 0) glUniformMatrix4fv(loc, 1, GL_TRUE, m.v);
-        };
-
-        auto setMat3 = [&](GLuint prog, const char* name, const Mat33f& m) {
-            GLint loc = U(prog, name);
-            if (loc >= 0) glUniformMatrix3fv(loc, 1, GL_TRUE, m.v);
-        };
-
-        auto setVec3 = [&](GLuint prog, const char* name, const Vec3f& v) {
-            GLint loc = U(prog, name);
-            if (loc >= 0) glUniform3fv(loc, 1, &v.x);
-        };
-
-        auto setInt = [&](GLuint prog, const char* name, int v) {
-            GLint loc = U(prog, name);
-            if (loc >= 0) glUniform1i(loc, v);
-        };
-
-        auto setVec3Array3 = [&](GLuint prog, const char* name, const Vec3f* arr3) {
-            GLint loc = U(prog, name);
-            if (loc >= 0) glUniform3fv(loc, 3, &arr3[0].x);
-        };
-
-        auto setIntArray3 = [&](GLuint prog, const char* name, const GLint* arr3) {
-            GLint loc = U(prog, name);
-            if (loc >= 0) glUniform1iv(loc, 3, arr3);
-        };
-
-        // =====================
         // render terrain
-        // =====================
         GLuint shader_main = terrain_shader.programId();
         glUseProgram(shader_main);
 
-        // lighting + camera
-        setVec3(shader_main, "uLightDir", light_direction);
-        setVec3(shader_main, "uAmbientColor", ambience);
-        setVec3(shader_main, "uCameraPosition", Camera_Lighting);
+        // set uniform locations for terrain shader
+        // first number is layout location in shader, second is how many values, last is a pointer to data, (for matrices uses GL_TRUE to transpose)
+        glUniform3fv(2, 1, &light_direction.x);
+        glUniform3fv(4, 1, &ambience.x);
+        glUniformMatrix3fv(1, 1, GL_TRUE, transform_model.v);
+        glUniform3fv(6, 1, &Camera_Lighting.x);
+        glUniform1i(17, 1);
 
-        // normal matrix
-        setMat3(shader_main, "uNormalMatrix", transform_model);
+        // local lights positions, colors, enabled
+        glUniform3fv(7, 3, &LocalLightPosition[0].x);
+        glUniform3fv(10, 3, &LocalLightColor[0].x);
+        glUniform1iv(13, 3, LocalLightOn);
+        glUniform1i(16, Sunlight ? 1 : 0);
 
-        // enable flags
-        setInt(shader_main, "uUseTexture", 1);
-        setInt(shader_main, "uDirectionalOn", Sunlight ? 1 : 0);
+        // set terrain matrix and color
+        glUniformMatrix4fv(0, 1, GL_TRUE, terrain_mvp.v);
+        glUniformMatrix4fv(18, 1, GL_TRUE, model.v);
+        glUniform3fv(3, 1, &color.x);
 
-        // local lights arrays
-        setVec3Array3(shader_main, "uLocalLightPosition", LocalLightPosition);
-        setVec3Array3(shader_main, "uLocalLightColor", LocalLightColor);
-        setIntArray3(shader_main, "uLocalLightOn", LocalLightOn);
-
-        // matrices + base color
-        setMat4(shader_main, "uMvp", terrain_mvp);
-        setMat4(shader_main, "uModel", model);
-        setVec3(shader_main, "uBaseColor", color);
-
-        // texture (sampler = texture unit index)
+        // bind terrain texture
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, Texture);
-        setInt(shader_main, "uTexture", 0);
+        glUniform1i(5, 0);
 
-        // draw terrain
+        // terrain rendering
         glBindVertexArray(terrain_vao);
         glDrawArrays(GL_TRIANGLES, 0, (GLsizei)TerrainMesh.positions.size());
         glBindVertexArray(0);
+        // stamp end of terrain rendering
         gpuStamp(profiler, Stamp::TerrainEnd, doProfile);
 
-        
-        // =====================
-        // spaceship rendering (spaceship shader)
-        // =====================
         GLuint shipProg = spaceship_shader.programId();
         glUseProgram(shipProg);
+        
+        glUniform3fv(2, 1, &light_direction.x);
+        glUniform3fv(4, 1, &ambience.x);
+        glUniform3fv(6, 1, &Camera_Lighting.x);
 
-        // lighting + camera (same values as terrain)
-        setVec3(shipProg, "uLightDir", light_direction);
-        setVec3(shipProg, "uAmbientColor", ambience);
-        setVec3(shipProg, "uCameraPosition", Camera_Lighting);
-        setInt(shipProg, "uDirectionalOn", Sunlight ? 1 : 0);
+        glUniform3fv(7, 3, &LocalLightPosition[0].x);
+        glUniform3fv(10, 3, &LocalLightColor[0].x);
+        glUniform1iv(13, 3, LocalLightOn);
+        glUniform1i(16, Sunlight ? 1 : 0);
+        
+        // spaceship rendering, set uniforms
+        glUniformMatrix3fv(1, 1, GL_TRUE, transform_model.v);
+        glUniformMatrix4fv(18, 1, GL_TRUE, SpaceshipMatrix.v);
+        glBindVertexArray(spaceshipVao);
+        glUniform1i(17, 0);
 
-        // local lights arrays
-        setVec3Array3(shipProg, "uLocalLightPosition", LocalLightPosition);
-        setVec3Array3(shipProg, "uLocalLightColor", LocalLightColor);
-        setIntArray3(shipProg, "uLocalLightOn", LocalLightOn);
+        // make diffuse/tint colour neutral so vertex colours are used directly
+        Vec3f spaceship_tint{ 1.0f, 1.0f, 1.0f };
+        glUniform3fv(3, 1, &spaceship_tint.x);
 
-        // matrices
-        setMat3(shipProg, "uNormalMatrix", transform_model);
-        setMat4(shipProg, "uModel", SpaceshipMatrix);
-        setMat4(shipProg, "uMvp", spaceship_mvp);
+        // set spaceship matrix
+        glUniformMatrix4fv(0, 1, GL_TRUE, spaceship_mvp.v);
 
         // draw spaceship
-        glBindVertexArray(spaceshipVao);
         glDrawArrays(GL_TRIANGLES, 0, spaceshipVertexCount);
+
+        // unbind spaceship VAO
         glBindVertexArray(0);
 
-        gpuStamp(profiler, Stamp::SpaceshipEnd, doProfile);
-
-
-        // =====================
-        // landing pad rendering (landing shader)
-        // =====================
+        // stamp end of spaceship rendering
+        gpuStamp(profiler, Stamp::SpaceshipEnd, doProfile); 
+        
+        // landing pad rendering
         GLuint landing_id = landing_shader.programId();
         glUseProgram(landing_id);
+        glUniformMatrix3fv(1, 1, GL_TRUE, transform_model.v);
+        glUniform3fv(2, 1, &light_direction.x);
+        glUniform3fv(4, 1, &ambience.x);
+        glUniform3fv(6, 1, &Camera_Lighting.x);
+        glUniform3fv(7, 3, &LocalLightPosition[0].x);
+        glUniform3fv(10, 3, &LocalLightColor[0].x);
+        glUniform1iv(13, 3, LocalLightOn);
+        glUniform1i(16, Sunlight ? 1 : 0);
 
-        // shared lighting
-        setVec3(landing_id, "uLightDir", light_direction);
-        setVec3(landing_id, "uAmbientColor", ambience);
-        setVec3(landing_id, "uCameraPosition", Camera_Lighting);
-        setInt(landing_id, "uDirectionalOn", Sunlight ? 1 : 0);
-
-        // local lights arrays
-        setVec3Array3(landing_id, "uLocalLightPosition", LocalLightPosition);
-        setVec3Array3(landing_id, "uLocalLightColor", LocalLightColor);
-        setIntArray3(landing_id, "uLocalLightOn", LocalLightOn);
-
-        // normal matrix (if landing shader uses it)
-        setMat3(landing_id, "uNormalMatrix", transform_model);
-
-        // draw both pads
+        // bind landing pad VAO
         glBindVertexArray(landing_vao);
 
-        // landing shader seems to use uProj (viewProj) + uModel
-        setMat4(landing_id, "uProj", view_projection);
-
+        // first pad, create model matrix and set uniforms
         Mat44f lpm = make_translation(landing_position);
-        setMat4(landing_id, "uModel", lpm);
+        glUniformMatrix4fv(0, 1, GL_TRUE, view_projection.v);
+        glUniformMatrix4fv(17, 1, GL_TRUE, lpm.v);
         glDrawArrays(GL_TRIANGLES, 0, (GLsizei)LandingMesh.positions.size());
 
+        // second pad
         Mat44f lpm2 = make_translation(landing2_position);
-        setMat4(landing_id, "uModel", lpm2);
+        glUniformMatrix4fv(0, 1, GL_TRUE, view_projection.v);
+        glUniformMatrix4fv(17, 1, GL_TRUE, lpm2.v);
         glDrawArrays(GL_TRIANGLES, 0, (GLsizei)LandingMesh.positions.size());
 
         glBindVertexArray(0);
 
         gpuStamp(profiler, Stamp::PadsEnd, doProfile);
 
-        renderParticles(Particles, particle_shader.programId(), view_projection.v, Camera_Lighting);
-
-//        // render terrain
-//        GLuint shader_main = terrain_shader.programId();
-//        glUseProgram(shader_main);
-//
-//        // set uniform locations for terrain shader
-//        // first number is layout location in shader, second is how many values, last is a pointer to data, (for matrices uses GL_TRUE to transpose)
-//        glUniform3fv(2, 1, &light_direction.x);
-//        glUniform3fv(4, 1, &ambience.x);
-//        glUniformMatrix3fv(1, 1, GL_TRUE, transform_model.v);
-//        glUniform3fv(6, 1, &Camera_Lighting.x);
-//        glUniform1i(17, 1);
-//
-//        // local lights positions, colors, enabled
-//        glUniform3fv(7, 3, &LocalLightPosition[0].x);
-//        glUniform3fv(10, 3, &LocalLightColor[0].x);
-//        glUniform1iv(13, 3, LocalLightOn);
-//        glUniform1i(16, Sunlight ? 1 : 0);
-//
-//        // set terrain matrix and color
-//        glUniformMatrix4fv(0, 1, GL_TRUE, terrain_mvp.v);
-//        glUniformMatrix4fv(18, 1, GL_TRUE, model.v);
-//        glUniform3fv(3, 1, &color.x);
-//
-//        // bind terrain texture
-//        glActiveTexture(GL_TEXTURE0);
-//        glBindTexture(GL_TEXTURE_2D, Texture);
-//        glUniform1i(5, 0);
-//
-//        // terrain rendering
-//        glBindVertexArray(terrain_vao);
-//        glDrawArrays(GL_TRIANGLES, 0, (GLsizei)TerrainMesh.positions.size());
-//        glBindVertexArray(0);
-//        // stamp end of terrain rendering
-//        gpuStamp(profiler, Stamp::TerrainEnd, doProfile);
-//
-//
-//        // spaceship rendering, set uniforms
-//        glUniformMatrix3fv(1, 1, GL_TRUE, transform_model.v);
-//        glUniformMatrix4fv(18, 1, GL_TRUE, SpaceshipMatrix.v);
-//        glBindVertexArray(spaceshipVao);
-//        glUniform1i(17, 0);
-//
-//        // make diffuse/tint colour neutral so vertex colours are used directly
-//        Vec3f spaceship_tint{ 1.0f, 1.0f, 1.0f };
-//        glUniform3fv(3, 1, &spaceship_tint.x);
-//
-//        // set spaceship matrix
-//        glUniformMatrix4fv(0, 1, GL_TRUE, spaceship_mvp.v);
-//
-//        // draw spaceship
-//        glDrawArrays(GL_TRIANGLES, 0, spaceshipVertexCount);
-//
-//        // unbind spaceship VAO
-//        glBindVertexArray(0);
-//
-//        // stamp end of spaceship rendering
-//        gpuStamp(profiler, Stamp::SpaceshipEnd, doProfile); 
-//        
-//        // landing pad rendering
-//        GLuint landing_id = landing_shader.programId();
-//        glUseProgram(landing_id);
-//        glUniformMatrix3fv(1, 1, GL_TRUE, transform_model.v);
-//        glUniform3fv(2, 1, &light_direction.x);
-//        glUniform3fv(4, 1, &ambience.x);
-//        glUniform3fv(6, 1, &Camera_Lighting.x);
-//        glUniform3fv(7, 3, &LocalLightPosition[0].x);
-//        glUniform3fv(10, 3, &LocalLightColor[0].x);
-//        glUniform1iv(13, 3, LocalLightOn);
-//        glUniform1i(16, Sunlight ? 1 : 0);
-//
-//        // bind landing pad VAO
-//        glBindVertexArray(landing_vao);
-//
-//        // first pad, create model matrix and set uniforms
-//        Mat44f lpm = make_translation(landing_position);
-//        glUniformMatrix4fv(0, 1, GL_TRUE, view_projection.v);
-//        glUniformMatrix4fv(17, 1, GL_TRUE, lpm.v);
-//        glDrawArrays(GL_TRIANGLES, 0, (GLsizei)LandingMesh.positions.size());
-//
-//        // second pad
-//        Mat44f lpm2 = make_translation(landing2_position);
-//        glUniformMatrix4fv(0, 1, GL_TRUE, view_projection.v);
-//        glUniformMatrix4fv(17, 1, GL_TRUE, lpm2.v);
-//        glDrawArrays(GL_TRIANGLES, 0, (GLsizei)LandingMesh.positions.size());
-//
-//        glBindVertexArray(0);
-//
-//        gpuStamp(profiler, Stamp::PadsEnd, doProfile);
-//
-//        // Particle rendering
-//        renderParticles(Particles,particle_shader.programId(),view_projection.v,Camera_Lighting);
+        // Particle rendering
+        renderParticles(Particles,particle_shader.programId(),view_projection.v,Camera_Lighting);
     }
 
 }
@@ -457,26 +324,10 @@ int main() try
     // GLFW window hints
     glfwWindowHint( GLFW_SRGB_CAPABLE, GLFW_TRUE);
     glfwWindowHint( GLFW_DOUBLEBUFFER, GLFW_TRUE);
-    
-    // OpenGL version
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
-
-    #ifdef __APPLE__
-        // macOS supports up to OpenGL 4.1 core only
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
-        glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE);
-    #else
-        // Windows / Linux
-        glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    #endif
-
-    // Core profile is REQUIRED on macOS
-    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    
-//    glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR,4);
-//    glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR,3);
-//    glfwWindowHint( GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE );
-//    glfwWindowHint( GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE );
+    glfwWindowHint( GLFW_CONTEXT_VERSION_MAJOR,4);
+    glfwWindowHint( GLFW_CONTEXT_VERSION_MINOR,3);
+    glfwWindowHint( GLFW_OPENGL_FORWARD_COMPAT, GLFW_TRUE );
+    glfwWindowHint( GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE );
     glfwWindowHint( GLFW_DEPTH_BITS,24);
 
 #   if !defined(NDEBUG)

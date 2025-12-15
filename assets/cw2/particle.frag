@@ -1,13 +1,8 @@
-//#version 430 core
-// Mac version
-#version 410 core
+#version 430 core
 
 // Matches the locations used in main.cpp
-//layout(location = 2) uniform vec3 uColor;        // tint for the exhaust
-//layout(location = 3) uniform sampler2D uTexture; // particle texture
-
-uniform vec3 uColor;        // tint for the exhaust
-uniform sampler2D uTexture;
+layout(location = 2) uniform vec3 uColor;        // tint for the exhaust
+layout(location = 3) uniform sampler2D uTexture; // particle texture
 
 out vec4 outColor;
 

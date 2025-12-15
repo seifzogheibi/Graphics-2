@@ -1,7 +1,4 @@
-// assets/cw2/landing.frag
-//#version 430 core
-// Mac version
-#version 410 core
+#version 430 core
 
 in vec3 vNormal;
 in vec3 vPosition;
@@ -14,25 +11,15 @@ in vec3 vKs;
 in float vNs;
 
 // keeps same layout as terrain shader
-//layout (location = 2)  uniform vec3 uLightDir;
-//layout (location = 4)  uniform vec3 uAmbientColor;
-//
-//layout (location = 6)  uniform vec3 uCameraPosition;
-//// spaceship lights
-//layout (location = 7)  uniform vec3 uLocalLightPosition[3];
-//layout (location = 10) uniform vec3 uLocalLightColor[3];
-//layout (location = 13) uniform int  uLocalLightOn[3];
-//layout (location = 16) uniform int  uDirectionalOn; // directional light
+layout (location = 2)  uniform vec3 uLightDir;
+layout (location = 4)  uniform vec3 uAmbientColor;
 
-uniform vec3 uLightDir;
-uniform vec3 uAmbientColor;
-
-uniform vec3 uCameraPosition;
+layout (location = 6)  uniform vec3 uCameraPosition;
 // spaceship lights
-uniform vec3 uLocalLightPosition[3];
-uniform vec3 uLocalLightColor[3];
-uniform int  uLocalLightOn[3];
-uniform int  uDirectionalOn; // directional light
+layout (location = 7)  uniform vec3 uLocalLightPosition[3];
+layout (location = 10) uniform vec3 uLocalLightColor[3];
+layout (location = 13) uniform int  uLocalLightOn[3];
+layout (location = 16) uniform int  uDirectionalOn; // directional light
 
 out vec4 oColor;
 

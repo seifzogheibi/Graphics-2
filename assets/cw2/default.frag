@@ -1,35 +1,22 @@
-//#version 430 core
-// Mac version
-#version 410 core
+#version 430 core
 
 in vec3 vNormal;
 in vec2 vTexCoord;
 in vec3 vPosition;
 
 // Directional light + material base colour
-//layout (location = 2) uniform vec3 uLightDir;
-//layout (location = 3) uniform vec3 uBaseColor;
-//layout (location = 4) uniform vec3 uAmbientColor;
-//layout (location = 5) uniform sampler2D uTexture;
-
-uniform vec3 uLightDir;
-uniform vec3 uBaseColor;
-uniform vec3 uAmbientColor;
-uniform sampler2D uTexture;
+layout (location = 2) uniform vec3 uLightDir;
+layout (location = 3) uniform vec3 uBaseColor;
+layout (location = 4) uniform vec3 uAmbientColor;
+layout (location = 5) uniform sampler2D uTexture;
 
 // Camera + Local lights
-//layout (location = 6)  uniform vec3 uCameraPosition;
-//layout (location = 7)  uniform vec3 uLocalLightPosition[3];      // 7, 8, 9
-//layout (location = 10) uniform vec3 uLocalLightColor[3];    // 10, 11, 12
-//layout (location = 13) uniform int  uLocalLightOn[3];  // 13, 14, 15
-//layout (location = 16) uniform int  uDirectionalOn;    // 16
-//layout (location = 17) uniform int  uUseTexture;            // 0 = use materials, 1 = use texture
-
-uniform vec3 uCameraPosition;
-uniform vec3 uLocalLightPosition[3];      // 7, 8, 9
-uniform vec3 uLocalLightColor[3];    // 10, 11, 12
-uniform int  uLocalLightOn[3];  // 13, 14, 15
-uniform int  uDirectionalOn;    // 16
+layout (location = 6)  uniform vec3 uCameraPosition;
+layout (location = 7)  uniform vec3 uLocalLightPosition[3];      // 7, 8, 9
+layout (location = 10) uniform vec3 uLocalLightColor[3];    // 10, 11, 12
+layout (location = 13) uniform int  uLocalLightOn[3];  // 13, 14, 15
+layout (location = 16) uniform int  uDirectionalOn;    // 16
+layout (location = 17) uniform int  uUseTexture;            // 0 = use materials, 1 = use texture
 
 out vec4 oColor;
 

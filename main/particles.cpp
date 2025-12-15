@@ -210,7 +210,7 @@ void renderParticles(
     if (ps.alive_count <= 0){
         return;
     }
-    
+
     // use particle shader
     glUseProgram(programId);
 
@@ -219,73 +219,27 @@ void renderParticles(
     // disable depth writing so particles dont block each other
     glDepthMask(GL_FALSE);
 
-    // ---- set uniforms by NAME (macOS GLSL 410 safe) ----
-    auto U = [&](const char* name) -> GLint {
-        return glGetUniformLocation(programId, name);
-    };
+    // upload view projection matrix
+    glUniformMatrix4fv(0, 1, GL_TRUE, viewProjMatrix);
+    // uplaod particle size
+    glUniform1f(1, 6.0f);
+    // upload camera positioning
+    glUniform3fv(4, 1, &camPosition.x);
 
-    // view-projection
-    if (GLint loc = U("uViewProj"); loc >= 0)
-        glUniformMatrix4fv(loc, 1, GL_TRUE, viewProjMatrix);
+    // Vec3f exhaustColor{ 0.9f, 0.9f, 1.0f };
+    // glUniform3fv(2, 1, &exhaustColor.x);
 
-    // particle base size
-    if (GLint loc = U("uBaseSize"); loc >= 0)
-        glUniform1f(loc, 6.0f);
-
-    // camera position
-    if (GLint loc = U("uCameraPosition"); loc >= 0)
-        glUniform3fv(loc, 1, &camPosition.x);
-
-    // optional tint color (only if the shader actually uses uColor)
-     Vec3f exhaustColor{ 0.9f, 0.9f, 1.0f };
-     if (GLint loc = U("uColor"); loc >= 0)
-        glUniform3fv(loc, 1, &exhaustColor.x);
-
-    // particle texture (sampler = texture unit index)
+    // use particle texture
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, ps.texture);
-    if (GLint loc = U("uTexture"); loc >= 0)
-        glUniform1i(loc, 0);
+    glUniform1i(3, 0);
 
-    // draw
     glBindVertexArray(ps.vao);
-    // each vertex is a sprite not triangle (GL_POINTS)
+    // each vertex is a sprite not triangle (GL_POINTS) 
     glDrawArrays(GL_POINTS, 0, ps.alive_count);
     glBindVertexArray(0);
 
-    // re-enable depth for normal scene rendering
+    // renable depth for normal scene rending
     glDepthMask(GL_TRUE);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-//    // use particle shader
-//    glUseProgram(programId);
-//
-//    // alpha blending
-//    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-//    // disable depth writing so particles dont block each other
-//    glDepthMask(GL_FALSE);
-//
-//    // upload view projection matrix
-//    glUniformMatrix4fv(0, 1, GL_TRUE, viewProjMatrix);
-//    // uplaod particle size
-//    glUniform1f(1, 6.0f);
-//    // upload camera positioning
-//    glUniform3fv(4, 1, &camPosition.x);
-//
-//    // Vec3f exhaustColor{ 0.9f, 0.9f, 1.0f };
-//    // glUniform3fv(2, 1, &exhaustColor.x);
-//
-//    // use particle texture
-//    glActiveTexture(GL_TEXTURE0);
-//    glBindTexture(GL_TEXTURE_2D, ps.texture);
-//    glUniform1i(3, 0);
-//
-//    glBindVertexArray(ps.vao);
-//    // each vertex is a sprite not triangle (GL_POINTS) 
-//    glDrawArrays(GL_POINTS, 0, ps.alive_count);
-//    glBindVertexArray(0);
-//
-//    // renable depth for normal scene rending
-//    glDepthMask(GL_TRUE);
-//    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }

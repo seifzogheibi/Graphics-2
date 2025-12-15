@@ -1,12 +1,7 @@
-//#version 430
-// Mac version
-#version 410 core
+#version 430
 
-//layout(location = 1) uniform sampler2D uFontTexture; // font atlas texture for drawing text
-//layout(location = 2) uniform int uUseTexture; // 1 is for text drawing, 0 for solid colors
-
-uniform sampler2D uFontTexture; // font atlas texture for drawing text
-uniform int uUseTexture;
+layout(location = 1) uniform sampler2D uFontTexture; // font atlas texture for drawing text
+layout(location = 2) uniform int uUseTexture; // 1 is for text drawing, 0 for solid colors
 
 in vec2 vTexCoord;
 in vec4 vColor;

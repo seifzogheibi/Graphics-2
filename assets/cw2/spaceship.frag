@@ -1,11 +1,4 @@
-//
-//  spaceship.frag
-//  main-shaders
-//
-//  Created by seif zogheibi on 15/12/2025.
-//
-
-#version 410 core
+#version 430 core
 
 in vec3 vNormal;
 in vec3 vPosition;

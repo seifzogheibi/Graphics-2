@@ -290,100 +290,41 @@ void UIRenderer::endFrame()
     projection[0,3] = -1.0f;
     projection[1,3] = 1.0f;
     
-    GLuint uiProg = uiShader.programId();
-    glUseProgram(uiProg);
+    // render terrain
+    GLuint ui_shader = uiShader.programId();
+    glUseProgram(ui_shader);
 
-    auto U = [&](const char* name) -> GLint {
-        return glGetUniformLocation(uiProg, name);
-    };
-
-    // projection matrix
-    if (GLint loc = U("uProjection"); loc >= 0)
-        glUniformMatrix4fv(loc, 1, GL_TRUE, projection.v);
-
+    glUniformMatrix4fv(0, 1, GL_TRUE, projection.v);
     glBindVertexArray(vao);
-
-    // ----- solid quads first -----
-    if (!quadVertices.empty())
+    
+    // Renders solid quads first
+if (!quadVertices.empty())
     {
-        // no texture
-        if (GLint loc = U("uUseTexture"); loc >= 0)
-            glUniform1i(loc, 0);
-
+        glUniform1i(2, 0);  // no texture
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glBufferData(GL_ARRAY_BUFFER,
-                     quadVertices.size() * sizeof(float),
-                     quadVertices.data(),
-                     GL_STREAM_DRAW);
-
-        int quadVertexCount = (int)quadVertices.size() / 8;
+        glBufferData(GL_ARRAY_BUFFER, quadVertices.size() * sizeof(float), quadVertices.data(), GL_STREAM_DRAW);
+        int quadVertexCount = quadVertices.size() / 8;
         glDrawArrays(GL_TRIANGLES, 0, quadVertexCount);
-    }
+    }  
 
-    // ----- then font atlas text quads -----
-    if (!textVertices.empty())
+    // then font atlas text quads
+     if (!textVertices.empty())
     {
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, fontTexture);
-
-        // sampler = texture unit index
-        if (GLint loc = U("uFontTexture"); loc >= 0)
-            glUniform1i(loc, 0);
-
-        // use texture
-        if (GLint loc = U("uUseTexture"); loc >= 0)
-            glUniform1i(loc, 1);
-
+        glUniform1i(1, 0);  // texture unit 0
+        glUniform1i(2, 1);  // use texture
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glBufferData(GL_ARRAY_BUFFER,
-                     textVertices.size() * sizeof(float),
-                     textVertices.data(),
-                     GL_STREAM_DRAW);
-
-        int textVertexCount = (int)textVertices.size() / 8;
+        glBufferData(GL_ARRAY_BUFFER, textVertices.size() * sizeof(float), textVertices.data(), GL_STREAM_DRAW);
+        int textVertexCount = textVertices.size() / 8;
         glDrawArrays(GL_TRIANGLES, 0, textVertexCount);
     }
-
     glBindVertexArray(0);
-
+    
     // Restore GL state
     if (!wasBlendEnabled) glDisable(GL_BLEND);
     if (wasDepthTestEnabled) glEnable(GL_DEPTH_TEST);
     if (wasCullFaceEnabled) glEnable(GL_CULL_FACE);
     if (wasSRGBEnabled) glEnable(GL_FRAMEBUFFER_SRGB);
     
-//    glUseProgram(uiShader.programId());
-//    glUniformMatrix4fv(0, 1, GL_TRUE, projection.v);
-//    glBindVertexArray(vao);
-//    
-//    // Renders solid quads first
-//if (!quadVertices.empty())
-//    {
-//        glUniform1i(2, 0);  // no texture
-//        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-//        glBufferData(GL_ARRAY_BUFFER, quadVertices.size() * sizeof(float), quadVertices.data(), GL_STREAM_DRAW);
-//        int quadVertexCount = quadVertices.size() / 8;
-//        glDrawArrays(GL_TRIANGLES, 0, quadVertexCount);
-//    }  
-//
-//    // then font atlas text quads
-//     if (!textVertices.empty())
-//    {
-//        glActiveTexture(GL_TEXTURE0);
-//        glBindTexture(GL_TEXTURE_2D, fontTexture);
-//        glUniform1i(1, 0);  // texture unit 0
-//        glUniform1i(2, 1);  // use texture
-//        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-//        glBufferData(GL_ARRAY_BUFFER, textVertices.size() * sizeof(float), textVertices.data(), GL_STREAM_DRAW);
-//        int textVertexCount = textVertices.size() / 8;
-//        glDrawArrays(GL_TRIANGLES, 0, textVertexCount);
-//    }
-//    glBindVertexArray(0);
-//    
-//    // Restore GL state
-//    if (!wasBlendEnabled) glDisable(GL_BLEND);
-//    if (wasDepthTestEnabled) glEnable(GL_DEPTH_TEST);
-//    if (wasCullFaceEnabled) glEnable(GL_CULL_FACE);
-//    if (wasSRGBEnabled) glEnable(GL_FRAMEBUFFER_SRGB);
-//    
 }

@@ -1,17 +1,11 @@
-//#version 430 core
-// Mac version
-#version 410 core
+#version 430 core
 
 layout(location = 0) in vec3 aPosition;
 
 // Matches your C++ bindings:
-//layout(location = 0) uniform mat4 uViewProj;
-//layout(location = 1) uniform float uBaseSize;   // C++ still sets this with location 1
-//layout(location = 4) uniform vec3 uCameraPosition;   // you already upload this in C++
-
-uniform mat4 uViewProj;
-uniform float uBaseSize;   // C++ still sets this with location 1
-uniform vec3 uCameraPosition;
+layout(location = 0) uniform mat4 uViewProj;
+layout(location = 1) uniform float uBaseSize;   // C++ still sets this with location 1
+layout(location = 4) uniform vec3 uCameraPosition;   // you already upload this in C++
 
 void main()
 {

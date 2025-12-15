@@ -1,11 +1,8 @@
-//#version 430 core
-// Mac version
-#version 410 core
+#version 430 core
 
 // Mesh inputs
 layout(location = 0) in vec3 iPosition;
 layout(location = 1) in vec3 iNormal;
-layout(location = 3) in vec3 iColor; // not used
 
 layout(location = 4) in float iNs; // shininess
 layout(location = 5) in vec3  iKa; // ambient
@@ -14,13 +11,9 @@ layout(location = 7) in vec3  iKe; // emissive
 layout(location = 8) in vec3  iKs; // specular
 
 // Matrices
-//layout(location = 0) uniform mat4 uProj; // actually viewProj * model (MVP)
-//layout(location = 1) uniform mat3 uNormalMatrix;
-//layout(location = 17) uniform mat4 uModel; // model matrix
-
-uniform mat4 uProj; // actually viewProj * model (MVP)
-uniform mat3 uNormalMatrix;
-uniform mat4 uModel;
+layout(location = 0) uniform mat4 uProj; // actually viewProj * model (MVP)
+layout(location = 1) uniform mat3 uNormalMatrix;
+layout(location = 17) uniform mat4 uModel; // model matrix
 
 out vec3 vNormal;
 out vec3 vPosition;       // world space position for lighting
