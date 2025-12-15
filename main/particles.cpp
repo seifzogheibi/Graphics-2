@@ -233,7 +233,7 @@ void renderParticles(
         glUniform1f(loc, 6.0f);
 
     // camera position
-    if (GLint loc = U("uCameraPos"); loc >= 0)
+    if (GLint loc = U("uCameraPosition"); loc >= 0)
         glUniform3fv(loc, 1, &camPosition.x);
 
     // optional tint color (only if the shader actually uses uColor)
