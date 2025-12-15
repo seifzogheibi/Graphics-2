@@ -301,7 +301,7 @@ Mat44f neckPre =
     return spaceshipMesh{
         spaceshipVAO,
         spaceshipVertexCount,
-        bulbRingHeight,
+        bulbsHeight,
         bodyRadius
     };
 }

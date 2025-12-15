@@ -8,7 +8,7 @@
 
 // Stamps that measure how long each section takes
 enum class Stamp : int
-{ FrameStart  = 0, TerrainEnd  = 1, UfoEnd = 2, PadsEnd = 3, FrameEnd = 4};
+{ FrameStart  = 0, TerrainEnd  = 1, SpaceshipEnd = 2, PadsEnd = 3, FrameEnd = 4};
 
 #ifdef ENABLE_GPU_PROFILING
 

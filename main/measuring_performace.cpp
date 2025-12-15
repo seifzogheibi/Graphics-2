@@ -85,12 +85,12 @@ void gpuCollectResults(GPUProfiler& p)
                 glGetQueryObjectui64v(p.q[read][i], GL_QUERY_RESULT, &t[i]);
             // section times in ms
             double terrain = ns_to_ms(t[(int)Stamp::TerrainEnd] - t[(int)Stamp::FrameStart]);
-            double ufo = ns_to_ms(t[(int)Stamp::UfoEnd] - t[(int)Stamp::TerrainEnd]);
-            double pads = ns_to_ms(t[(int)Stamp::PadsEnd] - t[(int)Stamp::UfoEnd]);
+            double spaceship = ns_to_ms(t[(int)Stamp::SpaceshipEnd] - t[(int)Stamp::TerrainEnd]);
+            double pads = ns_to_ms(t[(int)Stamp::PadsEnd] - t[(int)Stamp::SpaceshipEnd]);
             double total = ns_to_ms(t[(int)Stamp::FrameEnd] - t[(int)Stamp::FrameStart]);
 
             p.accTerrain += terrain;
-            p.accSpaceShip += ufo;
+            p.accSpaceShip += spaceship;
             p.accLpads += pads;
             p.accTotal += total;
             p.samples++;
@@ -105,7 +105,7 @@ void gpuCollectResults(GPUProfiler& p)
     {
         double inv = 1.0 / double(p.samples);
         double avgTerrain = p.accTerrain * inv;
-        double avgUfo = p.accSpaceShip * inv;
+        double avgSpaceship = p.accSpaceShip * inv;
         double avgPads = p.accLpads * inv;
         double avgTotal = p.accTotal * inv;
         double avgCpuF = p.accCpuFrame * inv;
@@ -114,7 +114,7 @@ void gpuCollectResults(GPUProfiler& p)
         std::print("\nPerformance Results {} frames\n", p.samples);
         std::print("GPU Timing:\n");
         std::print("Terrain:     {:7.3f} ms\n", avgTerrain);
-        std::print("Spaceship:   {:7.3f} ms\n", avgUfo);
+        std::print("Spaceship:   {:7.3f} ms\n", avgSpaceship);
         std::print("Landing Pads:{:7.3f} ms\n", avgPads);
         std::print("Total GPU:   {:7.3f} ms\n", avgTotal, 1000.0 / avgTotal);
         std::print("CPU Timing:\n");

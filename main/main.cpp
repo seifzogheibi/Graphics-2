@@ -143,7 +143,7 @@ namespace
     }
 
     // Draw everything in the program (terrain, spaceship, pads, particles)
-    void render_world(
+    void renderWorld(
         Mat44f const& view_projection,
         Vec3f const& Camera_Lighting,
         GLuint terrain_vao,
@@ -154,7 +154,8 @@ namespace
         Vec3f const& light_direction,
         Vec3f const& ambience,
         Vec3f const& color,
-        MeshGL const& SpaceshipMesh,
+        GLuint spaceshipVao,
+        GLsizei spaceshipVertexCount,
         Mat44f const& SpaceshipMatrix,
         GLuint landing_vao,
         SimpleMeshData const& LandingMesh,
@@ -231,7 +232,7 @@ namespace
         // spaceship rendering, set uniforms
         glUniformMatrix3fv(1, 1, GL_TRUE, transform_model.v);
         glUniformMatrix4fv(18, 1, GL_TRUE, SpaceshipMatrix.v);
-        glBindVertexArray(SpaceshipMesh.vao);
+        glBindVertexArray(spaceshipVao);
         glUniform1i(17, 0);
 
         // make diffuse/tint colour neutral so vertex colours are used directly
@@ -242,7 +243,7 @@ namespace
         glUniformMatrix4fv(0, 1, GL_TRUE, spaceship_mvp.v);
 
         // draw spaceship
-        glDrawArrays(GL_TRIANGLES, 0, SpaceshipMesh.vertexCount);
+        glDrawArrays(GL_TRIANGLES, 0, spaceshipVertexCount);
 
         // unbind spaceship VAO
         glBindVertexArray(0);
@@ -393,9 +394,10 @@ int main() try
     Vec3f ambience = { 0.18f, 0.18f, 0.18f };
 
     // Building spaceship mesh once instead of every frame
-    SpaceshipMesh Spaceship = create_spaceship_mesh();
-    MeshGL SpaceshipMesh = Spaceship.mesh;
-    float bulbRingY = Spaceship.bulbRingY;
+    spaceshipMesh Spaceship = create_spaceship_mesh();
+    GLuint SpaceshipVao = Spaceship.vao;
+    GLsizei SpaceshipVertexCount = Spaceship.vertexCount;
+    float bulbsHeight = Spaceship.bulbsHeight;
     float bulbRadius = Spaceship.bulbRadius;
 
     GLuint terrainTexture =
@@ -494,9 +496,9 @@ int main() try
             landing_position.z
         };
         float lightRadius = bulbRadius;
-        Vec3f lightOffset0{  lightRadius, bulbRingY - 0.35f, 0.0f };
-        Vec3f lightOffset1{ -0.5f * lightRadius, bulbRingY - 0.35f,0.866025f * lightRadius };
-        Vec3f lightOffset2{ -0.5f * lightRadius, bulbRingY - 0.35f,-0.866025f * lightRadius };
+        Vec3f lightOffset0{  lightRadius, bulbsHeight - 0.35f, 0.0f };
+        Vec3f lightOffset1{ -0.5f * lightRadius, bulbsHeight - 0.35f,0.866025f * lightRadius };
+        Vec3f lightOffset2{ -0.5f * lightRadius, bulbsHeight - 0.35f,-0.866025f * lightRadius };
 
         // inital spaceship before launching (erect on landing pad)
         Vec3f spaceship_current_position = spaceship_start_position;
@@ -526,14 +528,14 @@ int main() try
             Vec3f C{ x0, y0 + maxHeight, z0 + rangeZ * 0.55f };
             Vec3f D{ x0, y0 + maxHeight * 0.2f, z0 + rangeZ };
 
-            spaceship_current_position = bezier3(A, B, C, D, u);
+            spaceship_current_position = bezier(A, B, C, D, u);
 
             // approximates tangent by sampling slightly ahead on the curve
             float eps = 0.001f;
             float u2 = u + eps;
             if (u2 > 1.0f) u2 = 1.0f;
 
-            Vec3f posAhead = bezier3(A, B, C, D, u2);
+            Vec3f posAhead = bezier(A, B, C, D, u2);
             Vec3f vel = posAhead - spaceship_current_position;
             float speed = length(vel);
 
@@ -613,7 +615,7 @@ int main() try
         }
 
         // Camera movement
-        updatedCam(gCamera, dt);
+        updatedCam(CameraView, dt);
 
         // Keep the buttons in the bottom center of the screen
         float buttonY = fbheight - 60.0f;
@@ -641,7 +643,7 @@ int main() try
 
             Mat44f view_projection = proj * camResult.view;
 
-            renderScene(
+            renderWorld(
                 view_projection,
                 camResult.position,
                 terrain_vao,
@@ -652,7 +654,8 @@ int main() try
                 light_direction,
                 ambience,
                 color,
-                SpaceshipMesh,
+                SpaceshipVao,
+                SpaceshipVertexCount,
                 SpaceshipMatrix,
                 landing_vao,
                 LandingMesh,
@@ -681,7 +684,7 @@ int main() try
 
             Mat44f viewProj1 = projLeft * camResult1.view;
 
-            renderScene(
+            renderWorld(
                 viewProj1,
                 camResult1.position,
                 terrain_vao,
@@ -692,7 +695,8 @@ int main() try
                 light_direction,
                 ambience,
                 color,
-                SpaceshipMesh,
+                SpaceshipVao,
+                SpaceshipVertexCount,
                 SpaceshipMatrix,
                 landing_vao,
                 LandingMesh,
@@ -713,7 +717,7 @@ int main() try
 
             Mat44f viewProj2 = projRight * camResult2.view;
 
-            renderScene(
+            renderWorld(
                 viewProj2,
                 camResult2.position,
                 terrain_vao,
@@ -724,7 +728,8 @@ int main() try
                 light_direction,
                 ambience,
                 color,
-                SpaceshipMesh,
+                SpaceshipVao,
+                SpaceshipVertexCount,
                 SpaceshipMatrix,
                 landing_vao,
                 LandingMesh,
@@ -928,7 +933,7 @@ namespace
         mouse_x = xpos;
         mouse_y = ypos;
 
-        cameraMouseLook(gCamera, xpos, ypos);
+        cameraMouseLook(CameraView, xpos, ypos);
     }
 
     GLFWCleanupHelper::~GLFWCleanupHelper()
