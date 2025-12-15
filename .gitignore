@@ -9,4 +9,15 @@ Makefile
 *.obj
 *.a
 *.so
-*.log
+*.log.DS_Store
+*.xcworkspace/
+*.xcodeproj/
+# macOS junk
+.DS_Store
+
+# Xcode junk
+*.xcodeproj/
+*.xcworkspace/
+
+# build / toolchain files we don't want to track
+*.make

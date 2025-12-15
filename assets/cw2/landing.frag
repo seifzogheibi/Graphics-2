@@ -1,5 +1,7 @@
 // assets/cw2/landing.frag
-#version 430 core
+//#version 430 core
+// Mac version
+#version 410 core
 
 in vec3 vNormal;
 in vec3 vPosition;
@@ -12,25 +14,35 @@ in vec3 vKs;
 in float vNs;
 
 // keeps same layout as terrain shader
-layout (location = 2)  uniform vec3 uLightDir;
-layout (location = 4)  uniform vec3 uAmbientColor;
+//layout (location = 2)  uniform vec3 uLightDir;
+//layout (location = 4)  uniform vec3 uAmbientColor;
+//
+//layout (location = 6)  uniform vec3 uCameraPosition;
+//// spaceship lights
+//layout (location = 7)  uniform vec3 uLocalLightPosition[3];
+//layout (location = 10) uniform vec3 uLocalLightColor[3];
+//layout (location = 13) uniform int  uLocalLightOn[3];
+//layout (location = 16) uniform int  uDirectionalOn; // directional light
 
-layout (location = 6)  uniform vec3 uCameraPos;
+uniform vec3 uLightDir;
+uniform vec3 uAmbientColor;
+
+uniform vec3 uCameraPosition;
 // spaceship lights
-layout (location = 7)  uniform vec3 uPointLightPos[3];
-layout (location = 10) uniform vec3 uPointLightColor[3];
-layout (location = 13) uniform int  uPointLightEnabled[3];
-layout (location = 16) uniform int  uDirectionalEnabled; // directional light
+uniform vec3 uLocalLightPosition[3];
+uniform vec3 uLocalLightColor[3];
+uniform int  uLocalLightOn[3];
+uniform int  uDirectionalOn; // directional light
 
 out vec4 oColor;
 
 // Make them brighter than terrain
-const float POINT_INTENSITY = 1.0;
+const float LocalLightBrightness = 1.0;
 
 void main()
 {
     vec3 N = normalize(vNormal);
-    vec3 V = normalize(uCameraPos - vPosition);
+    vec3 V = normalize(uCameraPosition - vPosition);
     vec3 Ka = vKa;
     vec3 Kd = vKd;
     vec3 Ks = vKs;
@@ -40,7 +52,7 @@ void main()
     vec3 color = 0.3 * Ka * uAmbientColor + 0.3 * vKe;
 
     // Directional light
-    if (uDirectionalEnabled != 0)
+    if (uDirectionalOn != 0)
     {
         vec3 L = normalize(uLightDir);
         float NdotL = max(dot(N, L), 0.0);
@@ -60,10 +72,10 @@ void main()
     // Point lights (Blinn–Phong with 1/r^2 falloff)
     for (int i = 0; i < 3; ++i)
     {
-        if (uPointLightEnabled[i] == 0)
+        if (uLocalLightOn[i] == 0)
             continue;
 
-        vec3 Lvec = uPointLightPos[i] - vPosition;
+        vec3 Lvec = uLocalLightPosition[i] - vPosition;
         float dist = length(Lvec);
         vec3 L = Lvec / max(dist, 0.0001);
 
@@ -76,7 +88,7 @@ void main()
 
         vec3 H = normalize(L + V);
         float NdotH = max(dot(N, H), 0.0);
-        vec3 lightColor = uPointLightColor[i] * POINT_INTENSITY;
+        vec3 lightColor = uLocalLightColor[i] * LocalLightBrightness;
 
         // makes it more shiny by reducing diffuse and making specular stronger
         vec3 diffuse  = Kd * lightColor * NdotL * 1.0 / 3.141592;

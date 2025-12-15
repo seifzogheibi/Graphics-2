@@ -1,4 +1,6 @@
-#version 430 core
+//#version 430 core
+// Mac version
+#version 410 core
 
 // Mesh inputs
 layout(location = 0) in vec3 iPosition;
@@ -12,9 +14,13 @@ layout(location = 7) in vec3  iKe; // emissive
 layout(location = 8) in vec3  iKs; // specular
 
 // Matrices
-layout(location = 0) uniform mat4 uProj; // actually viewProj * model (MVP)
-layout(location = 1) uniform mat3 uNormalMatrix;
-layout(location = 17) uniform mat4 uModel; // model matrix
+//layout(location = 0) uniform mat4 uProj; // actually viewProj * model (MVP)
+//layout(location = 1) uniform mat3 uNormalMatrix;
+//layout(location = 17) uniform mat4 uModel; // model matrix
+
+uniform mat4 uProj; // actually viewProj * model (MVP)
+uniform mat3 uNormalMatrix;
+uniform mat4 uModel;
 
 out vec3 vNormal;
 out vec3 vPosition;       // world space position for lighting
@@ -27,8 +33,8 @@ out float vNs;
 void main()
 {
     // Puts vertex into world space (for lighitng)
-    vec4 worldPos = uModel * vec4(iPosition, 1.0);
-    vPosition = worldPos.xyz;
+    vec4 worldPosition = uModel * vec4(iPosition, 1.0);
+    vPosition = worldPosition.xyz;
 
     // Rotates the normal into world space
     vNormal = normalize(uNormalMatrix * iNormal);
@@ -39,5 +45,5 @@ void main()
     vKs = iKs;
     vNs = iNs;
 
-    gl_Position = uProj * worldPos;  // uProj = viewProj
+    gl_Position = uProj * worldPosition;  // uProj = viewProj
 }

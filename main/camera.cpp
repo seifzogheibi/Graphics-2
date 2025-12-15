@@ -1,5 +1,6 @@
 #include "camera.hpp"
 #include <cmath>
+#include <algorithm>
 
 // Build view matrix and camera position for each mode
 CameraResult computeCameraView(

@@ -244,8 +244,8 @@ SimpleMeshData make_fin(bool aCapped, std::size_t aSubdivs, Vec3f aColor,Mat44f 
 
     // back side (z = -halfT)
     Vec3f p0b{ 0.f, 0.f, -halfT };
-    Vec3f p1b{ 1.f, 0.f, -halfT };
-    Vec3f p2b{ 0.f, 1.f, -halfT };
+    Vec3f p2b{ 1.f, 0.f, -halfT };
+    Vec3f p1b{ 0.f, 1.f, -halfT };
 
     {
         // edges of the front face
