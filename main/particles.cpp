@@ -226,8 +226,8 @@ void renderParticles(
     // upload camera positioning
     glUniform3fv(4, 1, &camPosition.x);
 
-    // Vec3f exhaustColor{ 0.9f, 0.9f, 1.0f };
-    // glUniform3fv(2, 1, &exhaustColor.x);
+     Vec3f exhaustColor{ 0.9f, 0.9f, 1.0f };
+     glUniform3fv(2, 1, &exhaustColor.x);
 
     // use particle texture
     glActiveTexture(GL_TEXTURE0);
