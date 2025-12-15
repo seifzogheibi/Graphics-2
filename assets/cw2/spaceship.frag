@@ -9,14 +9,14 @@ in vec3 vKe;
 in vec3 vKs;
 in float vNs;
 
-uniform vec3 uLightDir;
-uniform vec3 uAmbientColor;
+layout (location = 2)  uniform vec3 uLightDir;
+layout (location = 4)  uniform vec3 uAmbientColor;
 
-uniform vec3 uCameraPosition;
-uniform vec3 uLocalLightPosition[3];
-uniform vec3 uLocalLightColor[3];
-uniform int  uLocalLightOn[3];
-uniform int  uDirectionalOn;
+layout (location = 6)  uniform vec3 uCameraPosition;
+layout (location = 7)  uniform vec3 uLocalLightPosition[3];   // 7,8,9
+layout (location = 10) uniform vec3 uLocalLightColor[3];      // 10,11,12
+layout (location = 13) uniform int  uLocalLightOn[3];         // 13,14,15
+layout (location = 16) uniform int  uDirectionalOn;           // 16
 
 out vec4 oColor;
 

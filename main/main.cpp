@@ -251,7 +251,6 @@ namespace
         glUniformMatrix3fv(1, 1, GL_TRUE, transform_model.v);
         glUniformMatrix4fv(18, 1, GL_TRUE, SpaceshipMatrix.v);
         glBindVertexArray(spaceshipVao);
-        glUniform1i(17, 0);
 
         // make diffuse/tint colour neutral so vertex colours are used directly
         Vec3f spaceship_tint{ 1.0f, 1.0f, 1.0f };
@@ -259,7 +258,7 @@ namespace
 
         // set spaceship matrix
         glUniformMatrix4fv(0, 1, GL_TRUE, spaceship_mvp.v);
-
+        
         // draw spaceship
         glDrawArrays(GL_TRIANGLES, 0, spaceshipVertexCount);
 
